@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <!-- Full-width gradient simulating the blended column look -->
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#1a1040"/>
+      <stop offset="15%"  stop-color="#503780"/>
+      <stop offset="30%"  stop-color="#b47882"/>
+      <stop offset="45%"  stop-color="#c89664"/>
+      <stop offset="55%"  stop-color="#ebd28c"/>
+      <stop offset="70%"  stop-color="#d7a060"/>
+      <stop offset="85%"  stop-color="#50375f"/>
+      <stop offset="100%" stop-color="#1a1040"/>
+    </linearGradient>
+    <!-- Vertical darken for bottom half -->
+    <linearGradient id="depth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="white" stop-opacity="0"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.15"/>
+    </linearGradient>
+    <clipPath id="rounded">
+      <rect rx="22" ry="22" width="128" height="128"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#rounded)">
+    <rect width="128" height="128" fill="url(#sky)"/>
+    <rect width="128" height="128" fill="url(#depth)"/>
+  </g>
+</svg>

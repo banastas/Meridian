@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@200;300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="add-btn" title="Add timezone">+</button>
+    <button id="settings-btn" title="Settings">⚙</button>
+  </div>
+
+  <!-- Search overlay -->
+  <div id="search-overlay" class="hidden">
+    <div id="search-container">
+      <input type="text" id="search-input" placeholder="Search city or timezone..." autocomplete="off">
+      <ul id="search-results"></ul>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
+  <div id="settings-panel" class="hidden">
+    <label>
+      <input type="checkbox" id="toggle-24h"> 24-hour format
+    </label>
+    <label>
+      <input type="checkbox" id="toggle-seconds"> Show seconds
+    </label>
+  </div>
+
+  <!-- First-run modal -->
+  <div id="first-run-modal" class="hidden">
+    <div id="first-run-content">
+      <h1>Welcome to Meridian</h1>
+      <p>Select your home timezone to get started.</p>
+      <input type="text" id="home-search" placeholder="Search your city..." autocomplete="off">
+      <ul id="home-results"></ul>
+      <div id="home-detected"></div>
+    </div>
+  </div>
+
+  <!-- Continuous gradient canvas -->
+  <canvas id="gradient-canvas"></canvas>
+
+  <!-- Timezone columns container -->
+  <div id="columns"></div>
+
+  <script src="newtab.js"></script>
+</body>
+</html>
