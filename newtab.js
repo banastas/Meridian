@@ -67,6 +67,14 @@ const $homeDetected = document.getElementById('home-detected');
 
 function lerpColor(a, b, t) {
   return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+}
+
+function lerpColorRound(a, b, t) {
+  return [
     Math.round(a[0] + (b[0] - a[0]) * t),
     Math.round(a[1] + (b[1] - a[1]) * t),
     Math.round(a[2] + (b[2] - a[2]) * t),
@@ -295,27 +303,52 @@ function updateDisplay() {
   }
   lastCanvasMinute = currentMinute;
 
-  // Paint in 4px strips for performance
-  const step = 4;
-  for (let x = 0; x < canvasW; x += step) {
-    const frac = (x + step / 2) / canvasW;
+  // Paint pixel-perfect gradient with dithering to eliminate banding
+  const imageData = ctx.createImageData(canvasW, canvasH);
+  const pixels = imageData.data;
+
+  // Precompute horizontal top/bottom colors (float precision)
+  const hTopColors = new Float32Array(canvasW * 3);
+  const hBottomColors = new Float32Array(canvasW * 3);
+  for (let x = 0; x < canvasW; x++) {
+    const frac = (x + 0.5) / canvasW;
     const centerPos = frac * count - 0.5;
     const leftIdx = Math.max(0, Math.min(count - 1, Math.floor(centerPos)));
     const rightIdx = Math.min(count - 1, leftIdx + 1);
     const t = leftIdx === rightIdx ? 0 : Math.max(0, Math.min(1, centerPos - leftIdx));
-
-    // Smoothstep for organic blending
     const smooth = t * t * (3 - 2 * t);
 
     const topColor = lerpColor(colColors[leftIdx].top, colColors[rightIdx].top, smooth);
     const bottomColor = lerpColor(colColors[leftIdx].bottom, colColors[rightIdx].bottom, smooth);
-
-    const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
-    grad.addColorStop(0, rgb(topColor));
-    grad.addColorStop(1, rgb(bottomColor));
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, 0, step, canvasH);
+    const i3 = x * 3;
+    hTopColors[i3] = topColor[0]; hTopColors[i3 + 1] = topColor[1]; hTopColors[i3 + 2] = topColor[2];
+    hBottomColors[i3] = bottomColor[0]; hBottomColors[i3 + 1] = bottomColor[1]; hBottomColors[i3 + 2] = bottomColor[2];
   }
+
+  // Fill pixel buffer with vertical interpolation + ordered dithering
+  // 4x4 Bayer matrix for dither (normalized to -0.5..+0.5 range)
+  const bayer4 = [
+    -0.5,    0.0,   -0.375,  0.125,
+     0.25,  -0.25,   0.375, -0.125,
+    -0.3125, 0.1875,-0.4375, 0.0625,
+     0.4375,-0.0625, 0.3125,-0.1875,
+  ];
+
+  for (let y = 0; y < canvasH; y++) {
+    const vt = y / (canvasH - 1);
+    const rowOffset = y * canvasW * 4;
+    const by = (y & 3) << 2; // bayer row: (y % 4) * 4
+    for (let x = 0; x < canvasW; x++) {
+      const i3 = x * 3;
+      const dither = bayer4[by + (x & 3)]; // ordered dither value
+      const pi = rowOffset + x * 4;
+      pixels[pi]     = Math.max(0, Math.min(255, Math.round(hTopColors[i3]     + (hBottomColors[i3]     - hTopColors[i3])     * vt + dither)));
+      pixels[pi + 1] = Math.max(0, Math.min(255, Math.round(hTopColors[i3 + 1] + (hBottomColors[i3 + 1] - hTopColors[i3 + 1]) * vt + dither)));
+      pixels[pi + 2] = Math.max(0, Math.min(255, Math.round(hTopColors[i3 + 2] + (hBottomColors[i3 + 2] - hTopColors[i3 + 2]) * vt + dither)));
+      pixels[pi + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
 
   // Paint radial glows onto canvas — one per column center
   ctx.globalCompositeOperation = 'lighter';
@@ -325,8 +358,8 @@ function updateDisplay() {
     const rx = colWidth * 0.7;
     const ry = canvasH * 0.3;
     const { top, bottom } = colColors[i];
-    const mid = lerpColor(top, bottom, 0.5);
-    const bright = lerpColor(mid, [255, 255, 255], 0.35);
+    const mid = lerpColorRound(top, bottom, 0.5);
+    const bright = lerpColorRound(mid, [255, 255, 255], 0.35);
     const isHome = columnEls[i].classList.contains('is-home');
     const alpha = isHome ? 0.06 : 0.035;
 
