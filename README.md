@@ -1,5 +1,5 @@
 # Meridian
-
+![](https://github.com/banastas/Meridian/blob/main/1280x800.png?raw=true)
 A Chrome extension that replaces your new tab with a beautiful multi-timezone dashboard.
 
 Each timezone is a full-height column painted with a gradient that reflects the local time of day — pale creams at noon, warm ambers in the afternoon, deep corals at sunset, dark navies at midnight. Adjacent columns blend seamlessly into each other using a canvas-based gradient engine with smoothstep interpolation, creating one continuous color landscape across the world.
