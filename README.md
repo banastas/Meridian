@@ -22,6 +22,10 @@ Inspired by [Figure It Out](https://www.producthunt.com/products/fio-figure-it-o
 
 ## Install
 
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/meridian/jldjgjlnkhfngchiaehmmeneipcolafp).
+
+Or load it unpacked:
+
 1. Clone this repo
 2. Open `chrome://extensions` (or `brave://extensions`)
 3. Enable **Developer mode**
@@ -30,16 +34,24 @@ Inspired by [Figure It Out](https://www.producthunt.com/products/fio-figure-it-o
 
 ## How It Works
 
-The gradient engine defines 12 color bands (one per 2-hour window) with top and bottom colors for each. Every minute, each column's band is interpolated based on the local time in that timezone. A full-viewport `<canvas>` element paints horizontal strips with smoothstep blending between adjacent columns, eliminating hard seams. Text color automatically switches between light and dark based on the background luminance.
+The gradient engine defines 12 color bands (one per 2-hour window) with top and bottom colors for each. Every minute, each column's band is interpolated based on the local time in that timezone. A full-viewport `<canvas>` element is painted pixel by pixel with smoothstep blending between adjacent columns and an ordered Bayer dither to eliminate banding. Text color automatically switches between light and dark based on the background luminance.
+
+## Privacy
+
+Meridian requests a single permission — `storage` — used to persist your timezone list and display preferences locally via `chrome.storage`. No analytics, no tracking, no network requests. Fonts are bundled with the extension.
 
 ## Stack
 
 - Vanilla HTML / CSS / JS
-- Google Fonts: [Inter](https://fonts.google.com/specimen/Inter) + [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono)
+- Bundled fonts: [Inter](https://fonts.google.com/specimen/Inter) + [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono)
 - Chrome Extension Manifest V3
 - Canvas 2D API for gradient rendering
 - `Intl.DateTimeFormat` for all time/date formatting
 - No build tools, no bundlers, no frameworks
+
+## Releases
+
+See [GitHub Releases](https://github.com/banastas/Meridian/releases) for the changelog.
 
 ## License
 
