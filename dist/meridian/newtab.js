@@ -4,6 +4,123 @@
 
 'use strict';
 
+// ---- Localization ----
+
+let currentLocale = 'en';
+let currentLanguage = 'en';
+let currentMessageLocale = 'en';
+let messages = {};
+let cityLocalization = {};
+let countryDisplayNames = null;
+const timezoneSearchCache = new Map();
+
+function hasChromeI18n() {
+  return typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage;
+}
+
+function getRequestedLocale() {
+  const params = new URLSearchParams(window.location.search);
+  const override = params.get('lang');
+  const browserLocale = hasChromeI18n() && chrome.i18n.getUILanguage
+    ? chrome.i18n.getUILanguage()
+    : navigator.language;
+  return (override || browserLocale || 'en').replace('_', '-');
+}
+
+function getLocaleConfig(locale) {
+  const normalized = locale.toLowerCase();
+  const language = normalized.split('-')[0];
+
+  if (language === 'es') {
+    return {
+      language: 'es',
+      messageLocale: 'es_419',
+      formatLocale: 'es-AR',
+    };
+  }
+
+  if (language === 'fr') {
+    return {
+      language: 'fr',
+      messageLocale: 'fr',
+      formatLocale: 'fr-FR',
+    };
+  }
+
+  return {
+    language: 'en',
+    messageLocale: 'en',
+    formatLocale: 'en',
+  };
+}
+
+async function fetchMessages(locale) {
+  const resp = await fetch(`_locales/${locale}/messages.json`);
+  return resp.ok ? resp.json() : {};
+}
+
+async function loadMessages() {
+  const localeConfig = getLocaleConfig(getRequestedLocale());
+  currentLocale = localeConfig.formatLocale;
+  currentLanguage = localeConfig.language;
+  currentMessageLocale = localeConfig.messageLocale;
+  document.documentElement.lang = currentLanguage;
+
+  if (hasChromeI18n()) return;
+
+  try {
+    const fallbackMessages = await fetchMessages('en');
+    const localizedMessages = currentMessageLocale === 'en'
+      ? {}
+      : await fetchMessages(currentMessageLocale);
+    messages = { ...fallbackMessages, ...localizedMessages };
+  } catch (error) {
+    messages = {};
+  }
+}
+
+function formatLocalMessage(messageData, substitutions) {
+  if (!messageData || !messageData.message) return '';
+
+  let message = messageData.message;
+  const values = Array.isArray(substitutions) ? substitutions : [substitutions];
+
+  for (const [name, placeholder] of Object.entries(messageData.placeholders || {})) {
+    const match = String(placeholder.content || '').match(/\$(\d+)/);
+    const value = match ? values[Number(match[1]) - 1] : '';
+    message = message.replace(new RegExp(`\\$${name}\\$`, 'gi'), value || '');
+  }
+
+  return message;
+}
+
+function t(key, substitutions = []) {
+  const values = Array.isArray(substitutions) ? substitutions : [substitutions];
+
+  if (hasChromeI18n()) {
+    const message = chrome.i18n.getMessage(key, values);
+    if (message) return message;
+  }
+
+  return formatLocalMessage(messages[key], values) || key;
+}
+
+function applyLocalizedStaticText() {
+  document.title = t('extensionName');
+
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    el.textContent = t(el.dataset.i18n);
+  }
+
+  for (const el of document.querySelectorAll('[data-i18n-title]')) {
+    el.title = t(el.dataset.i18nTitle);
+  }
+
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+}
+
 // ---- Color Bands (12 x 2-hour bands) ----
 // Each band: [topColor, bottomColor] as [r,g,b]
 const COLOR_BANDS = [
@@ -130,7 +247,7 @@ function getTextColor(topColor, bottomColor) {
 function getTimeInZone(tz) {
   const now = new Date();
   const parts = {};
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat(currentLocale, {
     timeZone: tz,
     hour: 'numeric',
     minute: '2-digit',
@@ -170,7 +287,7 @@ function getTimeInZone(tz) {
 }
 
 function getTzAbbreviation(tz) {
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat(currentLocale, {
     timeZone: tz,
     timeZoneName: 'short',
   });
@@ -238,7 +355,7 @@ function renderColumns() {
     if (isHome) col.classList.add('is-home');
 
     // City label
-    const cityNames = zone.cities.map(c => c.city).join(', ');
+    const cityNames = zone.cities.map(getLocalizedCityName).join(', ');
     const cityLabel = document.createElement('div');
     cityLabel.className = 'city-label';
     cityLabel.textContent = cityNames;
@@ -259,7 +376,7 @@ function renderColumns() {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
     removeBtn.textContent = '×';
-    removeBtn.title = 'Remove timezone';
+    removeBtn.title = t('removeTimezone');
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeZone(zone.tz);
@@ -437,7 +554,7 @@ function updateDisplay() {
       infoHTML += `<span class="offset-relative">${relative}</span>`;
     }
     if (dst) {
-      infoHTML += `<br><span class="dst-badge">DST</span>`;
+      infoHTML += `<br><span class="dst-badge">${t('dstBadge')}</span>`;
     }
     tzInfoEl.innerHTML = infoHTML;
 
@@ -464,17 +581,17 @@ function addZone(city, country, tz) {
   const existing = config.zones.find(z => z.tz === tz);
   if (existing) {
     if (existing.cities.some(c => c.city === city && c.country === country)) {
-      showToast(`${city} is already on this timezone`);
+      showToast(t('alreadyOnTimezone', getLocalizedCityName({ city, country })));
       return;
     }
     if (existing.cities.length >= 3) {
-      showToast('Up to 3 cities per timezone');
+      showToast(t('maxCitiesPerTimezone'));
       return;
     }
     existing.cities.push({ city, country });
   } else {
     if (config.zones.length >= 10) {
-      showToast('Up to 10 timezones — remove one to add another');
+      showToast(t('maxTimezones'));
       return;
     }
     config.zones.push({ tz, cities: [{ city, country }] });
@@ -542,14 +659,93 @@ async function loadCities() {
   cities = await resp.json();
 }
 
+async function loadCityLocalization() {
+  try {
+    const resp = await fetch('data/city-locales.json');
+    const allCityLocalization = resp.ok ? await resp.json() : {};
+    cityLocalization = allCityLocalization[currentLanguage] || {};
+  } catch (error) {
+    cityLocalization = {};
+  }
+}
+
+function getCityKey(city, country) {
+  return `${city}|${country}`;
+}
+
+function getLocalizedCityName(city) {
+  const key = getCityKey(city.city, city.country);
+  return (cityLocalization.names && cityLocalization.names[key]) || city.city;
+}
+
+function getLocalizedCityAliases(city) {
+  const key = getCityKey(city.city, city.country);
+  return (cityLocalization.aliases && cityLocalization.aliases[key]) || [];
+}
+
+function getCountryName(countryCode) {
+  if (!countryDisplayNames) {
+    try {
+      countryDisplayNames = new Intl.DisplayNames([currentLocale], { type: 'region' });
+    } catch (error) {
+      countryDisplayNames = null;
+    }
+  }
+
+  if (!countryDisplayNames) return countryCode;
+  return countryDisplayNames.of(countryCode) || countryCode;
+}
+
+function getLocalizedTimezoneSearchText(tz) {
+  const cacheKey = `${currentLocale}:${tz}`;
+  if (timezoneSearchCache.has(cacheKey)) return timezoneSearchCache.get(cacheKey);
+
+  const names = [];
+  for (const timeZoneName of ['short', 'long', 'shortGeneric', 'longGeneric']) {
+    try {
+      const formatter = new Intl.DateTimeFormat(currentLocale, {
+        timeZone: tz,
+        timeZoneName,
+      });
+      const part = formatter.formatToParts(new Date()).find(p => p.type === 'timeZoneName');
+      if (part && part.value) names.push(part.value);
+    } catch (error) {
+      // Some browsers do not support generic timezone names.
+    }
+  }
+
+  const text = [...new Set(names)].join(' ');
+  timezoneSearchCache.set(cacheKey, text);
+  return text;
+}
+
+function normalizeForSearch(value) {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2019'.,-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function getCitySearchText(city) {
+  return [
+    city.city,
+    getLocalizedCityName(city),
+    ...getLocalizedCityAliases(city),
+    city.country,
+    getCountryName(city.country),
+    city.tz,
+    city.tz.replace(/[\/_]/g, ' '),
+    getLocalizedTimezoneSearchText(city.tz),
+  ].join(' ');
+}
+
 function searchCities(query) {
   if (!query || query.length < 1) return [];
-  const q = query.toLowerCase();
-  const matches = cities.filter(c =>
-    c.city.toLowerCase().includes(q) ||
-    c.country.toLowerCase().includes(q) ||
-    c.tz.toLowerCase().includes(q)
-  );
+  const q = normalizeForSearch(query);
+  const matches = cities.filter(c => normalizeForSearch(getCitySearchText(c)).includes(q));
 
   // Deduplicate and prioritize starts-with
   const seen = new Set();
@@ -560,7 +756,12 @@ function searchCities(query) {
     const key = `${c.city}-${c.country}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (c.city.toLowerCase().startsWith(q)) {
+    const cityNames = [
+      c.city,
+      getLocalizedCityName(c),
+      ...getLocalizedCityAliases(c),
+    ];
+    if (cityNames.some(name => normalizeForSearch(name).startsWith(q))) {
       startsWith.push(c);
     } else {
       includes.push(c);
@@ -576,10 +777,16 @@ function renderSearchResults(results, $list, onSelect) {
 
   for (const city of results) {
     const li = document.createElement('li');
-    li.innerHTML = `
-      <span class="city-name">${city.city}, ${city.country}</span>
-      <span class="city-tz">${city.tz}</span>
-    `;
+    const cityName = document.createElement('span');
+    cityName.className = 'city-name';
+    cityName.textContent = `${getLocalizedCityName(city)}, ${getCountryName(city.country)}`;
+
+    const cityTz = document.createElement('span');
+    cityTz.className = 'city-tz';
+    cityTz.textContent = city.tz;
+
+    li.appendChild(cityName);
+    li.appendChild(cityTz);
     li.addEventListener('click', () => onSelect(city));
     $list.appendChild(li);
   }
@@ -690,14 +897,22 @@ function showFirstRun() {
   if (detected) {
     $homeDetected.innerHTML = '';
     const btn = document.createElement('button');
-    btn.textContent = `Use ${detected.city}, ${detected.country} (${systemTz})`;
+    btn.textContent = t('useDetectedLocation', [
+      getLocalizedCityName(detected),
+      getCountryName(detected.country),
+      systemTz,
+    ]);
     btn.addEventListener('click', () => {
       setHome(detected.city, detected.country, detected.tz);
       completeFirstRun();
     });
     $homeDetected.appendChild(btn);
   } else {
-    $homeDetected.innerHTML = `<p style="color: rgba(255,255,255,0.5); font-size: 13px;">Detected: ${systemTz} — search to select your city</p>`;
+    $homeDetected.innerHTML = '';
+    const detectedMessage = document.createElement('p');
+    detectedMessage.className = 'detected-message';
+    detectedMessage.textContent = t('detectedSearchPrompt', systemTz);
+    $homeDetected.appendChild(detectedMessage);
   }
 
   $homeSearch.addEventListener('input', () => {
@@ -778,7 +993,10 @@ document.addEventListener('keydown', (e) => {
 // ---- Init ----
 
 async function init() {
+  await loadMessages();
+  applyLocalizedStaticText();
   await loadCities();
+  await loadCityLocalization();
   await loadConfig();
 
   $toggle24h.checked = config.use24h;

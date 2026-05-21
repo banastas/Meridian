@@ -1,0 +1,74 @@
+{
+  "extensionName": {
+    "message": "Meridian"
+  },
+  "extensionDescription": {
+    "message": "Une élégante page de nouvel onglet multi-fuseaux horaires. Visualisez l'heure de la journée dans le monde grâce à la couleur."
+  },
+  "addTimezone": {
+    "message": "Ajouter un fuseau horaire"
+  },
+  "settings": {
+    "message": "Paramètres"
+  },
+  "searchCityOrTimezone": {
+    "message": "Rechercher une ville ou un fuseau horaire..."
+  },
+  "searchYourCity": {
+    "message": "Rechercher votre ville..."
+  },
+  "format24h": {
+    "message": "Format 24 heures"
+  },
+  "showSeconds": {
+    "message": "Afficher les secondes"
+  },
+  "welcomeTitle": {
+    "message": "Bienvenue dans Meridian"
+  },
+  "welcomeBody": {
+    "message": "Sélectionnez votre fuseau horaire local pour commencer."
+  },
+  "removeTimezone": {
+    "message": "Supprimer le fuseau horaire"
+  },
+  "alreadyOnTimezone": {
+    "message": "$CITY$ est déjà dans ce fuseau horaire",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "maxCitiesPerTimezone": {
+    "message": "Jusqu'à 3 villes par fuseau horaire"
+  },
+  "maxTimezones": {
+    "message": "Jusqu'à 10 fuseaux horaires ; supprimez-en un pour en ajouter un autre"
+  },
+  "useDetectedLocation": {
+    "message": "Utiliser $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      },
+      "country": {
+        "content": "$2"
+      },
+      "timezone": {
+        "content": "$3"
+      }
+    }
+  },
+  "detectedSearchPrompt": {
+    "message": "Détecté : $TIMEZONE$ ; recherchez votre ville pour la sélectionner",
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "dstBadge": {
+    "message": "HE"
+  }
+}

@@ -265,6 +265,12 @@ body:hover #toolbar {
   letter-spacing: 0.2px;
 }
 
+#first-run-content .detected-message {
+  margin: 0;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+}
+
 #home-search {
   text-align: left;
 }

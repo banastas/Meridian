@@ -1,0 +1,91 @@
+{
+  "extensionName": {
+    "message": "Meridian",
+    "description": "Extension name."
+  },
+  "extensionDescription": {
+    "message": "A beautiful multi-timezone new tab page. See the time of day across the world in color.",
+    "description": "Extension description shown by Chrome."
+  },
+  "addTimezone": {
+    "message": "Add timezone",
+    "description": "Tooltip for the add timezone button."
+  },
+  "settings": {
+    "message": "Settings",
+    "description": "Tooltip for the settings button."
+  },
+  "searchCityOrTimezone": {
+    "message": "Search city or timezone...",
+    "description": "Placeholder for the add timezone search field."
+  },
+  "searchYourCity": {
+    "message": "Search your city...",
+    "description": "Placeholder for the home city search field."
+  },
+  "format24h": {
+    "message": "24-hour format",
+    "description": "Settings label for 24-hour time."
+  },
+  "showSeconds": {
+    "message": "Show seconds",
+    "description": "Settings label for seconds display."
+  },
+  "welcomeTitle": {
+    "message": "Welcome to Meridian",
+    "description": "First-run modal title."
+  },
+  "welcomeBody": {
+    "message": "Select your home timezone to get started.",
+    "description": "First-run modal body copy."
+  },
+  "removeTimezone": {
+    "message": "Remove timezone",
+    "description": "Tooltip for removing a timezone column."
+  },
+  "alreadyOnTimezone": {
+    "message": "$CITY$ is already on this timezone",
+    "description": "Toast shown when a city is already present.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "maxCitiesPerTimezone": {
+    "message": "Up to 3 cities per timezone",
+    "description": "Toast shown when a timezone already has the maximum number of cities."
+  },
+  "maxTimezones": {
+    "message": "Up to 10 timezones - remove one to add another",
+    "description": "Toast shown when the dashboard already has the maximum number of timezones."
+  },
+  "useDetectedLocation": {
+    "message": "Use $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "description": "Button for accepting the detected home timezone.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      },
+      "country": {
+        "content": "$2"
+      },
+      "timezone": {
+        "content": "$3"
+      }
+    }
+  },
+  "detectedSearchPrompt": {
+    "message": "Detected: $TIMEZONE$ - search to select your city",
+    "description": "Fallback text when no city matches the detected timezone.",
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "dstBadge": {
+    "message": "DST",
+    "description": "Short daylight saving time badge."
+  }
+}

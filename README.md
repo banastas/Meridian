@@ -14,6 +14,7 @@ Inspired by [Figure It Out](https://www.producthunt.com/products/fio-figure-it-o
 - **Dynamic typography** — time display scales inversely with column count
 - **Home timezone** — indicated with a subtle underline accent
 - **Instant city search** — fuzzy matching with keyboard navigation
+- **English, Argentine Spanish, and French (France)** — localized UI, dates, country names, and city search aliases
 - **12h / 24h format** and optional seconds display
 - **DST detection** — badge and UTC offset shown per column
 - **Relative offset** — see how each timezone relates to your home

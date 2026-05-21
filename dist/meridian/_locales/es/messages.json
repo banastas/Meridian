@@ -1,0 +1,74 @@
+{
+  "extensionName": {
+    "message": "Meridian"
+  },
+  "extensionDescription": {
+    "message": "Una hermosa página de pestaña nueva con varios husos horarios. Mirá la hora del día en todo el mundo a través del color."
+  },
+  "addTimezone": {
+    "message": "Agregar huso horario"
+  },
+  "settings": {
+    "message": "Ajustes"
+  },
+  "searchCityOrTimezone": {
+    "message": "Buscá ciudad o huso horario..."
+  },
+  "searchYourCity": {
+    "message": "Buscá tu ciudad..."
+  },
+  "format24h": {
+    "message": "Formato de 24 horas"
+  },
+  "showSeconds": {
+    "message": "Mostrar segundos"
+  },
+  "welcomeTitle": {
+    "message": "Bienvenido a Meridian"
+  },
+  "welcomeBody": {
+    "message": "Elegí tu huso horario local para empezar."
+  },
+  "removeTimezone": {
+    "message": "Quitar huso horario"
+  },
+  "alreadyOnTimezone": {
+    "message": "$CITY$ ya está en este huso horario",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "maxCitiesPerTimezone": {
+    "message": "Hasta 3 ciudades por huso horario"
+  },
+  "maxTimezones": {
+    "message": "Hasta 10 husos horarios; quitá uno para agregar otro"
+  },
+  "useDetectedLocation": {
+    "message": "Usar $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      },
+      "country": {
+        "content": "$2"
+      },
+      "timezone": {
+        "content": "$3"
+      }
+    }
+  },
+  "detectedSearchPrompt": {
+    "message": "Detectado: $TIMEZONE$; buscá para seleccionar tu ciudad",
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "dstBadge": {
+    "message": "HV"
+  }
+}
