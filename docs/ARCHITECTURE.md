@@ -8,7 +8,7 @@ Meridian is an offline-first Manifest V3 new-tab extension. Runtime code has no 
 
 - the home city and ordered timezone list;
 - up to three grouped cities and one working/waking schedule per timezone;
-- 12/24-hour time, seconds, information density, gradient theme, atmosphere, and availability preferences;
+- 12/24-hour time, seconds, information density, gradient theme, smooth-transition, and availability preferences;
 - up to 12 named preset snapshots;
 - active preset, onboarding completion, and local/sync storage choice.
 
@@ -22,7 +22,7 @@ Backup exports are versioned JSON envelopes. Imports, stored data, sync data, an
 
 ## Planning and availability
 
-Time travel is ephemeral and intentionally resets on a new tab. The planner covers 0–48 hours in exact 15-minute increments. Its selected instant feeds time/date formatters, offsets, gradients, celestial cues, transition detail, and availability highlighting.
+Time travel is ephemeral and intentionally resets on a new tab. The planner covers 0–48 hours in exact 15-minute increments. Its selected instant feeds time/date formatters, offsets, gradients, transition detail, and availability highlighting.
 
 Availability supports conventional and overnight schedules. The core scans the next 48 hours in 15-minute increments and coalesces consecutive matching samples into windows. Disabled schedules opt a timezone out of the constraint without removing its clock.
 

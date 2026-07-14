@@ -75,7 +75,7 @@ invariant(/role="dialog" aria-modal="true"/.test(html), 'Dialogs need modal sema
 invariant(/role="combobox"/.test(html) && /role="listbox"/.test(html), 'Search needs combobox/listbox semantics.');
 invariant(/role="status" aria-live="polite"/.test(html), 'Toast needs an aria-live status role.');
 invariant(/id="time-slider"[^>]+max="2880"[^>]+step="15"/.test(html), 'Time travel must cover 48 hours in 15-minute steps.');
-for (const control of ['time-travel-btn', 'availability-btn', 'edit-btn', 'export-btn', 'import-btn']) {
+for (const control of ['time-travel-btn', 'availability-toggle', 'edit-btn', 'export-btn', 'import-btn']) {
   invariant(html.includes(`id="${control}"`), `Missing product control: ${control}`);
 }
 invariant(/:focus-visible/.test(css) && /:focus-within/.test(css), 'Visible keyboard focus styles are required.');

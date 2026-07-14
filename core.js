@@ -378,18 +378,6 @@ export function getSolarGradientColors(timeZone, coordinates, date = new Date())
   return getGradientColors(Math.floor(normalizedMinutes / 60), normalizedMinutes % 60);
 }
 
-export function getCelestialState(timeZone, coordinates, date = new Date()) {
-  const parts = getZonedDateParts(timeZone, date);
-  const localHour = parts.hour + parts.minute / 60;
-  const solarTimes = getSolarTimes(timeZone, coordinates, date);
-  if (!solarTimes) return { kind: localHour >= 6 && localHour < 18 ? 'sun' : 'moon', progress: localHour / 24 };
-  const daylight = localHour >= solarTimes.sunrise && localHour < solarTimes.sunset;
-  const start = daylight ? solarTimes.sunrise : solarTimes.sunset;
-  const end = daylight ? solarTimes.sunset : solarTimes.sunrise + 24;
-  const value = daylight ? localHour : (localHour < solarTimes.sunrise ? localHour + 24 : localHour);
-  return { kind: daylight ? 'sun' : 'moon', progress: Math.max(0, Math.min(1, (value - start) / (end - start))) };
-}
-
 function normalizeCityName(value) {
   return String(value)
     .normalize('NFD')

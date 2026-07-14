@@ -12,7 +12,6 @@ import {
   findAvailabilityWindows,
   formatRelativeOffset,
   formatUtcOffset,
-  getCelestialState,
   getContrastRatio,
   getGradientColors,
   getLocalMinuteOfDay,
@@ -163,7 +162,6 @@ test('solar calculations respond to latitude, longitude, and season without a ne
     getSolarGradientColors('Europe/Paris', paris, new Date('2026-06-21T03:30:00Z')),
     getGradientColors(5, 30),
   );
-  assert.equal(getCelestialState('Europe/Paris', paris, new Date('2026-06-21T12:00:00Z')).kind, 'sun');
 });
 
 test('versioned configuration normalizes schedules, presets, privacy, and limits', () => {

@@ -11,7 +11,6 @@ import {
   findAvailabilityWindows,
   formatRelativeOffset,
   formatUtcOffset,
-  getCelestialState,
   getGradientColors,
   getLocalMinuteOfDay,
   getNextOffsetTransition,
@@ -25,7 +24,7 @@ import {
   lerpColorRound,
   normalizeConfig,
   parseBackup,
-} from './core.js?v=2.1';
+} from './core.js?v=3';
 
 // Localization
 let currentLocale = 'en';
@@ -36,7 +35,7 @@ let cityLocalization = {};
 let countryDisplayNames = null;
 const timezoneSearchCache = new Map();
 const timezoneNameFormatterCache = new Map();
-const ASSET_VERSION = '2';
+const ASSET_VERSION = '3';
 
 function hasChromeI18n() {
   return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.i18n?.getMessage;
@@ -129,7 +128,7 @@ const $columns = byId('columns');
 const $toolbar = byId('toolbar');
 const $addBtn = byId('add-btn');
 const $timeTravelBtn = byId('time-travel-btn');
-const $availabilityBtn = byId('availability-btn');
+const $availabilityToggle = byId('availability-toggle');
 const $editBtn = byId('edit-btn');
 const $settingsBtn = byId('settings-btn');
 const $settingsPanel = byId('settings-panel');
@@ -265,13 +264,10 @@ function renderColumns() {
     content.setAttribute('aria-describedby', details.id);
     content.append(cityLabel, timeDisplay, dateDisplay, info, details);
 
-    const cue = document.createElement('span');
-    cue.className = 'celestial-cue';
-    cue.setAttribute('aria-hidden', 'true');
     const availabilityBand = document.createElement('span');
     availabilityBand.className = 'availability-band';
     availabilityBand.setAttribute('aria-hidden', 'true');
-    column.append(cue, availabilityBand, content, createEditControls(zone, index));
+    column.append(availabilityBand, content, createEditControls(zone, index));
     attachDragHandlers(column);
     $columns.append(column);
   });
@@ -423,15 +419,9 @@ function updateDisplay() {
     const zone = config.zones.find(item => item.tz === timeZone);
     const available = isMinuteWithinHours(getLocalMinuteOfDay(timeZone, date), zone.workingHours);
     column.classList.toggle('is-available', available);
-    const cue = column.querySelector('.celestial-cue');
-    const celestial = getCelestialState(timeZone, coordinates[timeZone], date);
-    cue.className = `celestial-cue ${celestial.kind}`;
-    cue.style.left = `${15 + celestial.progress * 70}%`;
-    cue.style.top = `${42 - Math.sin(celestial.progress * Math.PI) * 18}%`;
   });
 
   document.body.classList.toggle('density-compact', config.infoDensity === 'compact');
-  document.body.classList.toggle('atmosphere-enabled', config.atmosphericMotion);
   updatePlanner(date);
 }
 
@@ -763,10 +753,8 @@ function toggleEdit(force) {
 }
 
 function toggleAvailability() {
-  config.availabilityEnabled = !config.availabilityEnabled;
-  $availabilityBtn.ariaPressed = String(config.availabilityEnabled);
+  config.availabilityEnabled = $availabilityToggle.checked;
   document.body.classList.toggle('availability-mode', config.availabilityEnabled);
-  if (config.availabilityEnabled) togglePlanner(true);
   saveConfig(); updateDisplay();
 }
 
@@ -782,7 +770,7 @@ function closeSettings({ restoreFocus = false } = {}) {
 function syncSettingsControls() {
   $toggle24h.checked = config.use24h; $toggleSeconds.checked = config.showSeconds; $toggleMotion.checked = config.atmosphericMotion;
   $densitySelect.value = config.infoDensity; $themeSelect.value = config.visualTheme; $storageSelect.value = config.storageMode;
-  $availabilityBtn.ariaPressed = String(config.availabilityEnabled);
+  $availabilityToggle.checked = config.availabilityEnabled;
   document.body.classList.toggle('availability-mode', config.availabilityEnabled);
   renderPresets();
 }
@@ -790,7 +778,7 @@ function syncSettingsControls() {
 // Events
 $addBtn.addEventListener('click', () => openSearch('add', $addBtn));
 $timeTravelBtn.addEventListener('click', () => togglePlanner());
-$availabilityBtn.addEventListener('click', toggleAvailability);
+$availabilityToggle.addEventListener('change', toggleAvailability);
 $editBtn.addEventListener('click', () => toggleEdit());
 $settingsBtn.addEventListener('click', event => { event.stopPropagation(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); });
 byId('settings-close').addEventListener('click', () => closeSettings({ restoreFocus: true }));

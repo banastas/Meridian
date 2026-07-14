@@ -154,7 +154,7 @@
     "description": "Meridian product interface text."
   },
   "atmosphericMotion": {
-    "message": "Atmósfera sutil",
+    "message": "Transiciones suaves del gradiente",
     "description": "Meridian product interface text."
   },
   "presets": {

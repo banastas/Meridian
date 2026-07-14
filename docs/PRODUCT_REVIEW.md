@@ -23,7 +23,7 @@ That framing keeps the gradient clock wall as the emotional center while giving 
 
 ### 1. Add a time-travel scrubber
 
-**Implemented:** the planner covers the next 48 hours in 15-minute steps; the slider, arrow keys, `T`, `Escape`, and the explicit Now control update every clock, date, offset, availability state, celestial cue, and gradient together.
+**Implemented:** the planner covers the next 48 hours in 15-minute steps; the slider, arrow keys, `T`, `Escape`, and the explicit Now control update every clock, date, offset, availability state, and gradient together.
 
 Let the user drag from now through the next 24–48 hours. Every clock, date, relative offset, and gradient should move together, with a clear “Now” return control.
 
@@ -91,14 +91,13 @@ The current `PDT · UTC−7`, relative offset, and `DST` stack is accurate but v
 
 Faint remove buttons keep the canvas calm but remain visually ambiguous. An “Edit clocks” mode could reveal remove, reorder, set-home, and grouping actions together. Always keep keyboard-accessible shortcuts and an undo toast for destructive actions.
 
-### Add restrained motion and atmosphere
+### Add restrained motion
 
-**Implemented:** the gradient interpolates below minute precision, solar mode provides restrained sun/moon arcs, and atmosphere remains optional. Reduced-motion and forced-color preferences override decorative behavior.
+**Implemented:** the gradient interpolates below minute precision and smooth transitions remain optional. Explicit sun/moon markers were removed after visual review because they were too abstract. Reduced-motion and forced-color preferences override decorative behavior.
 
 Small touches could increase delight without making a new tab distracting:
 
 - Cross-fade gradients at minute boundaries instead of visibly stepping.
-- Add a very subtle sun/moon or horizon cue in an optional atmospheric theme.
 - Animate entry into time-travel mode and shared-availability mode.
 - Respect reduced-motion and forced-colors preferences, as the current build now does.
 
@@ -120,7 +119,7 @@ All four phases were delivered together as a coherent interaction model. The pla
 
 1. **Planning release:** smarter onboarding, manual ordering, undo removal, and storage sync/export.
 2. **Coordination release:** time-travel scrubber plus shared-availability highlighting.
-3. **Delight release:** optional solar-aware gradients, atmosphere, and themes.
+3. **Delight release:** optional solar-aware gradients, smooth transitions, and themes.
 4. **Ongoing polish:** contextual DST information, compact density, more locales, and keyboard refinements.
 
 ## Product guardrails
