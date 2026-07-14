@@ -17,14 +17,14 @@ import {
   getOffsetMinutes,
   getRepresentativeCity,
   getSolarGradientColors,
+  getSmoothGradientStops,
   getTextColor,
   getTimeInZone as getCoreTimeInZone,
   isMinuteWithinHours,
-  lerpColor,
   lerpColorRound,
   normalizeConfig,
   parseBackup,
-} from './core.js?v=3';
+} from './core.js?v=1.2.1';
 
 // Localization
 let currentLocale = 'en';
@@ -35,7 +35,7 @@ let cityLocalization = {};
 let countryDisplayNames = null;
 const timezoneSearchCache = new Map();
 const timezoneNameFormatterCache = new Map();
-const ASSET_VERSION = '3';
+const ASSET_VERSION = '1.2.1';
 
 function hasChromeI18n() {
   return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.i18n?.getMessage;
@@ -123,6 +123,22 @@ const transitionCache = new Map();
 const byId = id => document.getElementById(id);
 const $canvas = byId('gradient-canvas');
 const context = $canvas.getContext('2d');
+const blendCanvas = document.createElement('canvas');
+const blendContext = blendCanvas.getContext('2d');
+const ditherCanvas = document.createElement('canvas');
+ditherCanvas.width = 64; ditherCanvas.height = 64;
+const ditherContext = ditherCanvas.getContext('2d');
+const ditherImage = ditherContext.createImageData(ditherCanvas.width, ditherCanvas.height);
+let ditherSeed = 0x6d2b79f5;
+for (let index = 0; index < ditherImage.data.length; index += 4) {
+  ditherSeed = Math.imul(ditherSeed, 1664525) + 1013904223;
+  const value = 96 + ((ditherSeed >>> 24) % 65);
+  ditherImage.data[index] = value;
+  ditherImage.data[index + 1] = value;
+  ditherImage.data[index + 2] = value;
+  ditherImage.data[index + 3] = 255;
+}
+ditherContext.putImageData(ditherImage, 0, 0);
 const $dashboard = byId('dashboard');
 const $columns = byId('columns');
 const $toolbar = byId('toolbar');
@@ -340,6 +356,46 @@ function attachDragHandlers(column) {
   });
 }
 
+function createSmoothHorizontalGradient(targetContext, palette, width) {
+  const gradient = targetContext.createLinearGradient(0, 0, width, 0);
+  for (const stop of getSmoothGradientStops(palette)) {
+    gradient.addColorStop(stop.offset, `rgb(${stop.color.join(',')})`);
+  }
+  return gradient;
+}
+
+function paintContinuousGradient(colors, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight) {
+  context.globalCompositeOperation = 'source-over';
+  context.fillStyle = createSmoothHorizontalGradient(context, colors.map(color => color.top), canvasWidth);
+  context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  if (blendCanvas.width !== backingWidth) blendCanvas.width = backingWidth;
+  if (blendCanvas.height !== backingHeight) blendCanvas.height = backingHeight;
+  blendContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+  blendContext.clearRect(0, 0, canvasWidth, canvasHeight);
+  blendContext.globalCompositeOperation = 'source-over';
+  blendContext.fillStyle = createSmoothHorizontalGradient(blendContext, colors.map(color => color.bottom), canvasWidth);
+  blendContext.fillRect(0, 0, canvasWidth, canvasHeight);
+  blendContext.globalCompositeOperation = 'destination-in';
+  const verticalMask = blendContext.createLinearGradient(0, 0, 0, canvasHeight);
+  verticalMask.addColorStop(0, 'rgba(0,0,0,0)');
+  verticalMask.addColorStop(1, 'rgba(0,0,0,1)');
+  blendContext.fillStyle = verticalMask;
+  blendContext.fillRect(0, 0, canvasWidth, canvasHeight);
+  blendContext.globalCompositeOperation = 'source-over';
+  context.drawImage(blendCanvas, 0, 0, backingWidth, backingHeight, 0, 0, canvasWidth, canvasHeight);
+}
+
+function applyGradientDither(backingWidth, backingHeight) {
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = 'soft-light';
+  context.globalAlpha = 0.08;
+  context.fillStyle = context.createPattern(ditherCanvas, 'repeat');
+  context.fillRect(0, 0, backingWidth, backingHeight);
+  context.restore();
+}
+
 function updateDisplay() {
   const columnElements = [...$columns.querySelectorAll('.tz-column')];
   if (!columnElements.length) return;
@@ -370,18 +426,7 @@ function updateDisplay() {
     if ($canvas.width !== backingWidth) $canvas.width = backingWidth;
     if ($canvas.height !== backingHeight) $canvas.height = backingHeight;
     context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, canvasWidth, canvasHeight);
-    for (let x = 0; x < canvasWidth; x++) {
-      const position = ((x + .5) / canvasWidth) * count - .5;
-      const left = Math.max(0, Math.min(count - 1, Math.floor(position)));
-      const right = Math.min(count - 1, left + 1);
-      const raw = left === right ? 0 : Math.max(0, Math.min(1, position - left));
-      const amount = raw * raw * (3 - 2 * raw);
-      const top = lerpColor(colors[left].top, colors[right].top, amount).map(Math.round);
-      const bottom = lerpColor(colors[left].bottom, colors[right].bottom, amount).map(Math.round);
-      const gradient = context.createLinearGradient(0, 0, 0, canvasHeight);
-      gradient.addColorStop(0, `rgb(${top.join(',')})`); gradient.addColorStop(1, `rgb(${bottom.join(',')})`);
-      context.fillStyle = gradient; context.fillRect(x, 0, 1.25, canvasHeight);
-    }
+    paintContinuousGradient(colors, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight);
     context.globalCompositeOperation = 'lighter';
     colors.forEach(({ top, bottom }, index) => {
       const centerX = (index + .5) * columnWidth, centerY = canvasHeight * .45;
@@ -394,6 +439,7 @@ function updateDisplay() {
       context.fillStyle = glow; context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
     });
     context.globalCompositeOperation = 'source-over';
+    applyGradientDither(backingWidth, backingHeight);
   }
 
   const homeOffset = config.home ? getOffsetMinutes(config.home.tz, date) : null;

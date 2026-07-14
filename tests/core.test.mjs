@@ -21,6 +21,7 @@ import {
   getSolarAdjustedHour,
   getSolarGradientColors,
   getSolarTimes,
+  getSmoothGradientStops,
   getTextColor,
   getTimeInZone,
   isMinuteWithinHours,
@@ -89,6 +90,19 @@ test('gradient text always meets WCAG AA small-text contrast', () => {
     minimum = Math.min(minimum, getContrastRatio(foreground, background));
   }
   assert.ok(minimum >= 4.5, `minimum contrast was ${minimum}`);
+});
+
+test('smooth horizontal gradient stops preserve edges and interpolate without seams', () => {
+  const stops = getSmoothGradientStops([[0, 0, 0], [255, 128, 64]], 4);
+  assert.deepEqual(stops[0], { offset: 0, color: [0, 0, 0] });
+  assert.deepEqual(stops.at(-1), { offset: 1, color: [255, 128, 64] });
+  assert.ok(stops.every((stop, index) => index === 0 || stop.offset >= stops[index - 1].offset));
+  const midpoint = stops.find(stop => stop.offset === 0.5);
+  assert.deepEqual(midpoint.color, [127.5, 64, 32]);
+  assert.deepEqual(getSmoothGradientStops([[12, 34, 56]]), [
+    { offset: 0, color: [12, 34, 56] },
+    { offset: 1, color: [12, 34, 56] },
+  ]);
 });
 
 test('stored configurations repair a missing home column and malformed values', () => {

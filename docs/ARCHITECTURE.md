@@ -36,6 +36,10 @@ npm run data:coordinates
 
 The generator refuses incomplete output. Runtime sunrise and sunset calculations use only the selected date, timezone, and bundled coordinate. Polar days/nights fall back to the predictable clock palette. The fixed clock palette remains the default.
 
+## Gradient rendering
+
+The canvas is composed from two continuous horizontal gradients: one for the top palette and one for the bottom palette. A vertical alpha mask blends them into a single two-dimensional field. Smoothstep-sampled color stops preserve the soft transitions between timezone centers without painting rounded one-pixel strips. A fixed, subpixel monochrome dither is then blended at very low opacity to prevent visible 8-bit bands in dark colors without introducing animated grain or external texture assets.
+
 ## Accessibility and localization
 
 - Every dialog is modal and every hidden advanced control is removed from the accessibility tree.

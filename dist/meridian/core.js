@@ -54,6 +54,28 @@ export function lerpColorRound(a, b, amount) {
   return lerpColor(a, b, amount).map(Math.round);
 }
 
+export function getSmoothGradientStops(colors, subdivisions = 16) {
+  if (!Array.isArray(colors) || colors.length === 0) return [];
+  if (colors.length === 1) {
+    return [{ offset: 0, color: [...colors[0]] }, { offset: 1, color: [...colors[0]] }];
+  }
+
+  const steps = Math.max(1, Math.floor(subdivisions));
+  const stops = [{ offset: 0, color: [...colors[0]] }];
+  for (let index = 0; index < colors.length - 1; index++) {
+    for (let step = 0; step <= steps; step++) {
+      const raw = step / steps;
+      const smooth = raw * raw * (3 - 2 * raw);
+      stops.push({
+        offset: (index + 0.5 + raw) / colors.length,
+        color: lerpColor(colors[index], colors[index + 1], smooth),
+      });
+    }
+  }
+  stops.push({ offset: 1, color: [...colors.at(-1)] });
+  return stops;
+}
+
 export function getGradientColors(hour, minute) {
   const bandIndex = Math.floor(hour / 2);
   const nextBandIndex = (bandIndex + 1) % COLOR_BANDS.length;

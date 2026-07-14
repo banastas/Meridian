@@ -82,6 +82,8 @@ invariant(/:focus-visible/.test(css) && /:focus-within/.test(css), 'Visible keyb
 invariant(/prefers-reduced-motion/.test(css) && /forced-colors/.test(css), 'Motion and forced-color preferences must be supported.');
 invariant(!/toLocaleString\(/.test(javascript), 'Timezone offsets must not reparse localized strings.');
 invariant(!/https?:\/\//.test(`${html}\n${javascript}\n${css}`), 'Runtime files must not make external requests.');
+invariant(!/for \(let x = 0; x < canvasWidth/.test(javascript), 'Gradient renderer must not regress to rounded vertical strips.');
+invariant(javascript.includes("'destination-in'") && javascript.includes("'soft-light'"), 'Continuous gradient compositing and dithering are required.');
 for (const shortcut of ["event.key === '/'", "event.key.toLowerCase() === 't'", "event.key.toLowerCase() === 'e'", "event.key === ','"]) {
   invariant(javascript.includes(shortcut), `Missing keyboard shortcut contract: ${shortcut}`);
 }
