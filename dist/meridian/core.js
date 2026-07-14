@@ -176,6 +176,13 @@ export function formatRelativeOffset(offsetMinutes, homeOffsetMinutes) {
   return minutes ? `${sign}${hours}h ${minutes}m` : `${sign}${hours}h`;
 }
 
+export function sortZonesByUtcOffset(zones, date = new Date()) {
+  return [...zones]
+    .map((zone, index) => ({ zone, index, offset: getOffsetMinutes(zone.tz, date) }))
+    .sort((a, b) => a.offset - b.offset || a.index - b.index)
+    .map(item => item.zone);
+}
+
 export function isDaylightSavingTime(timeZone, date = new Date()) {
   const year = date.getFullYear();
   const januaryOffset = getOffsetMinutes(timeZone, new Date(year, 0, 1, 12));

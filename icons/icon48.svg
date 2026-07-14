@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="sky48" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#171038"/>
+      <stop offset="16%" stop-color="#49316f"/>
+      <stop offset="32%" stop-color="#b37477"/>
+      <stop offset="49%" stop-color="#e9ce88"/>
+      <stop offset="65%" stop-color="#c98964"/>
+      <stop offset="82%" stop-color="#5a3a68"/>
+      <stop offset="100%" stop-color="#15102f"/>
+    </linearGradient>
+    <linearGradient id="depth48" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#080817" stop-opacity="0.2"/>
+    </linearGradient>
+    <clipPath id="rounded48"><rect width="48" height="48" rx="9"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded48)">
+    <rect width="48" height="48" fill="url(#sky48)"/>
+    <rect width="48" height="48" fill="url(#depth48)"/>
+  </g>
+  <circle cx="24" cy="24" r="13.2" fill="#121129" fill-opacity="0.84" stroke="#fff7d9" stroke-width="2.8"/>
+  <ellipse cx="24" cy="24" rx="5.1" ry="13.2" fill="none" stroke="#fff7d9" stroke-width="2.2"/>
+</svg>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Preparing Meridian store capture</title>
+  </head>
+  <body>
+    <script>
+      localStorage.setItem('meridian_config', JSON.stringify({
+        schemaVersion: 2,
+        home: { city: 'Paris', country: 'FR', tz: 'Europe/Paris' },
+        zones: [
+          { tz: 'America/Los_Angeles', cities: [{ city: 'Los Angeles', country: 'US' }] },
+          { tz: 'America/New_York', cities: [{ city: 'New York', country: 'US' }] },
+          { tz: 'Europe/London', cities: [{ city: 'London', country: 'GB' }] },
+          { tz: 'Europe/Paris', cities: [{ city: 'Paris', country: 'FR' }] },
+          { tz: 'Europe/Berlin', cities: [{ city: 'Berlin', country: 'DE' }] },
+          { tz: 'Asia/Shanghai', cities: [{ city: 'Beijing', country: 'CN' }] },
+          { tz: 'Asia/Tokyo', cities: [{ city: 'Tokyo', country: 'JP' }] },
+        ],
+        use24h: true,
+        showSeconds: false,
+        infoDensity: 'standard',
+        visualTheme: 'clock',
+        atmosphericMotion: true,
+        availabilityEnabled: false,
+        storageMode: 'local',
+        onboardingComplete: true,
+      }));
+      location.replace('../dist/meridian/newtab.html?store-capture=1');
+    </script>
+  </body>
+</html>

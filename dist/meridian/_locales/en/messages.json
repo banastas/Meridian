@@ -4,7 +4,7 @@
     "description": "Extension name."
   },
   "extensionDescription": {
-    "message": "A beautiful multi-timezone new tab page. See the time of day across the world in color.",
+    "message": "A beautiful world clock new tab for seeing, planning, and connecting across time zones.",
     "description": "Extension description shown by Chrome."
   },
   "addTimezone": {

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="sky16" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#171038"/>
+      <stop offset="18%" stop-color="#593873"/>
+      <stop offset="36%" stop-color="#bd7772"/>
+      <stop offset="50%" stop-color="#ecd18a"/>
+      <stop offset="67%" stop-color="#c38363"/>
+      <stop offset="84%" stop-color="#50355f"/>
+      <stop offset="100%" stop-color="#15102f"/>
+    </linearGradient>
+    <clipPath id="rounded16"><rect width="16" height="16" rx="3"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded16)">
+    <rect width="16" height="16" fill="url(#sky16)"/>
+    <rect width="16" height="16" fill="#080817" opacity="0.08"/>
+  </g>
+  <circle cx="8" cy="8" r="4.7" fill="#121129" fill-opacity="0.9" stroke="#fff7d9" stroke-width="1.25"/>
+  <ellipse cx="8" cy="8" rx="1.8" ry="4.7" fill="none" stroke="#fff7d9" stroke-width="1.05"/>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="sky240" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#171038"/>
+      <stop offset="16%" stop-color="#49316f"/>
+      <stop offset="32%" stop-color="#b37477"/>
+      <stop offset="49%" stop-color="#e9ce88"/>
+      <stop offset="65%" stop-color="#c98964"/>
+      <stop offset="82%" stop-color="#5a3a68"/>
+      <stop offset="100%" stop-color="#15102f"/>
+    </linearGradient>
+    <linearGradient id="depth240" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#080817" stop-opacity="0.2"/>
+    </linearGradient>
+    <clipPath id="rounded240"><rect width="240" height="240" rx="42"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded240)">
+    <rect width="240" height="240" fill="url(#sky240)"/>
+    <rect width="240" height="240" fill="url(#depth240)"/>
+  </g>
+  <circle cx="120" cy="120" r="66" fill="#121129" fill-opacity="0.82" stroke="#fff7d9" stroke-width="12"/>
+  <ellipse cx="120" cy="120" rx="25" ry="66" fill="none" stroke="#fff7d9" stroke-width="9.5"/>
+</svg>

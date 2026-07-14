@@ -40,6 +40,26 @@ async function listFiles(directory, prefix = '') {
   return files;
 }
 
+async function validateStorePng(relativePath, expectedWidth, expectedHeight) {
+  const image = await readFile(path.join(root, relativePath));
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  invariant(image.length >= 26 && image.subarray(0, 8).equals(signature), `${relativePath} must be a PNG.`);
+  invariant(image.toString('ascii', 12, 16) === 'IHDR', `${relativePath} has an invalid PNG header.`);
+  invariant(image.readUInt32BE(16) === expectedWidth, `${relativePath} must be ${expectedWidth}px wide.`);
+  invariant(image.readUInt32BE(20) === expectedHeight, `${relativePath} must be ${expectedHeight}px high.`);
+  invariant(image[24] === 8 && image[25] === 2, `${relativePath} must be 24-bit RGB without alpha or a palette.`);
+  return image;
+}
+
+async function validateIconPng(relativePath, expectedSize) {
+  const image = await readFile(path.join(root, relativePath));
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  invariant(image.length >= 26 && image.subarray(0, 8).equals(signature), `${relativePath} must be a PNG.`);
+  invariant(image.toString('ascii', 12, 16) === 'IHDR', `${relativePath} has an invalid PNG header.`);
+  invariant(image.readUInt32BE(16) === expectedSize && image.readUInt32BE(20) === expectedSize, `${relativePath} must be ${expectedSize}×${expectedSize}px.`);
+  invariant(image[24] === 8 && image[25] === 6, `${relativePath} must be 32-bit RGBA with transparent rounded corners.`);
+}
+
 const manifest = await readJson('manifest.json');
 const packageMetadata = await readJson('package.json');
 invariant(manifest.manifest_version === 3, 'manifest_version must be 3.');
@@ -149,6 +169,14 @@ invariant(minimumContrast >= 4.5, `Minimum text contrast is ${minimumContrast.to
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');
 invariant(readme.includes(`**${cities.length} cities**`), `README city count must be ${cities.length}.`);
 
+const storeScreenshot = await validateStorePng('store-assets/meridian-screenshot-1280x800.png', 1280, 800);
+await validateStorePng('store-assets/meridian-promo-small-440x280.png', 440, 280);
+await validateStorePng('store-assets/meridian-promo-marquee-1400x560.png', 1400, 560);
+invariant(storeScreenshot.equals(await readFile(path.join(root, '1280x800.png'))), 'README screenshot must match the current store screenshot.');
+for (const size of [16, 48, 128, 240]) await validateIconPng(`icons/icon${size}.png`, size);
+const iconSource = await readFile(path.join(root, 'icons', 'icon.svg'), 'utf8');
+invariant(iconSource.includes('<circle') && iconSource.includes('<ellipse'), 'Master icon must retain the globe and meridian mark.');
+
 if (validateDist) {
   const packageRoot = path.join(root, 'dist', 'meridian');
   const zipPath = path.join(root, 'dist', `meridian-${manifest.version}.zip`);
@@ -176,4 +204,4 @@ if (validateDist) {
   invariant(JSON.stringify(zipEntries) === JSON.stringify(sourceFiles), 'Release ZIP inventory differs from source inventory.');
 }
 
-console.log(`Validated source${validateDist ? ', packaged directory, and release ZIP' : ''}: ${cities.length} cities, ${new Set(cities.map(city => city.tz)).size} timezones, ${localeNames.length} locales, minimum contrast ${minimumContrast.toFixed(2)}:1.`);
+console.log(`Validated source${validateDist ? ', packaged directory, and release ZIP' : ''}: ${cities.length} cities, ${new Set(cities.map(city => city.tz)).size} timezones, ${localeNames.length} locales, 4 icon sizes, 3 store assets, minimum contrast ${minimumContrast.toFixed(2)}:1.`);

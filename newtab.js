@@ -24,6 +24,7 @@ import {
   lerpColorRound,
   normalizeConfig,
   parseBackup,
+  sortZonesByUtcOffset,
 } from './core.js?v=1.2.1';
 
 // Localization
@@ -545,6 +546,7 @@ function addDefaultZones() {
     const city = getRepresentativeCity(cities, tz, preferredCity);
     if (city && config.zones.length < 10) config.zones.push({ tz, cities: [{ city: city.city, country: city.country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
   }
+  config.zones = sortZonesByUtcOffset(config.zones);
   saveConfig();
 }
 

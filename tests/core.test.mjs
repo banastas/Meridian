@@ -28,6 +28,7 @@ import {
   lerpColor,
   normalizeConfig,
   parseBackup,
+  sortZonesByUtcOffset,
 } from '../core.js';
 
 const cities = JSON.parse(await readFile(new URL('../data/cities.json', import.meta.url), 'utf8'));
@@ -69,6 +70,35 @@ test('canonical default and detected cities are selected', () => {
     assert.equal(getRepresentativeCity(cities, tz, city).city, city);
   }
   assert.equal(getRepresentativeCity(cities, 'Europe/Paris').city, 'Paris');
+});
+
+test('the first-run world sample sorts west to east without disturbing equal offsets', () => {
+  const date = new Date('2026-07-14T12:00:00Z');
+  const zones = [
+    { tz: 'Europe/Paris', label: 'Home' },
+    { tz: 'Asia/Tokyo', label: 'Tokyo' },
+    { tz: 'America/Los_Angeles', label: 'Los Angeles' },
+    { tz: 'Asia/Shanghai', label: 'Beijing' },
+    { tz: 'Europe/Berlin', label: 'Berlin' },
+    { tz: 'America/New_York', label: 'New York' },
+  ];
+
+  assert.deepEqual(sortZonesByUtcOffset(zones, date).map(zone => zone.label), [
+    'Los Angeles',
+    'New York',
+    'Home',
+    'Berlin',
+    'Beijing',
+    'Tokyo',
+  ]);
+  assert.deepEqual(zones.map(zone => zone.label), [
+    'Home',
+    'Tokyo',
+    'Los Angeles',
+    'Beijing',
+    'Berlin',
+    'New York',
+  ], 'sorting does not mutate saved user order');
 });
 
 test('locale-native date order is preserved', () => {
