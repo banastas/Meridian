@@ -1,0 +1,19 @@
+{
+  "name": "meridian-new-tab",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "QA, validation, and deterministic release tooling for Meridian.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "data:coordinates": "node scripts/generate-timezone-coordinates.mjs",
+    "validate": "node scripts/validate.mjs",
+    "validate:dist": "node scripts/validate.mjs --dist",
+    "build": "node scripts/build.mjs",
+    "check": "npm run validate && npm test",
+    "verify": "npm run check && npm run build && npm run validate:dist"
+  }
+}

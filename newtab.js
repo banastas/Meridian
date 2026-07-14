@@ -1,11 +1,33 @@
-/* ============================================
-   Meridian — New Tab Timezone Dashboard
-   ============================================ */
-
 'use strict';
 
-// ---- Localization ----
+import {
+  DEFAULT_TIMEZONES,
+  DEFAULT_WORKING_HOURS,
+  areZonesAvailable,
+  calculateLayoutWidth,
+  calculateTimeFontSize,
+  createBackup,
+  createPresetSnapshot,
+  findAvailabilityWindows,
+  formatRelativeOffset,
+  formatUtcOffset,
+  getCelestialState,
+  getGradientColors,
+  getLocalMinuteOfDay,
+  getNextOffsetTransition,
+  getOffsetMinutes,
+  getRepresentativeCity,
+  getSolarGradientColors,
+  getTextColor,
+  getTimeInZone as getCoreTimeInZone,
+  isMinuteWithinHours,
+  lerpColor,
+  lerpColorRound,
+  normalizeConfig,
+  parseBackup,
+} from './core.js?v=2.1';
 
+// Localization
 let currentLocale = 'en';
 let currentLanguage = 'en';
 let currentMessageLocale = 'en';
@@ -13,1001 +35,860 @@ let messages = {};
 let cityLocalization = {};
 let countryDisplayNames = null;
 const timezoneSearchCache = new Map();
+const timezoneNameFormatterCache = new Map();
+const ASSET_VERSION = '2';
 
 function hasChromeI18n() {
-  return typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage;
+  return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.i18n?.getMessage;
 }
 
-function getRequestedLocale() {
-  const params = new URLSearchParams(window.location.search);
-  const override = params.get('lang');
-  const browserLocale = hasChromeI18n() && chrome.i18n.getUILanguage
-    ? chrome.i18n.getUILanguage()
-    : navigator.language;
-  return (override || browserLocale || 'en').replace('_', '-');
+function hasChromeStorage() {
+  return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.storage?.local;
 }
 
 function getLocaleConfig(locale) {
-  const normalized = locale.toLowerCase();
-  const language = normalized.split('-')[0];
-
-  if (language === 'es') {
-    return {
-      language: 'es',
-      messageLocale: 'es_419',
-      formatLocale: 'es-AR',
-    };
-  }
-
-  if (language === 'fr') {
-    return {
-      language: 'fr',
-      messageLocale: 'fr',
-      formatLocale: 'fr-FR',
-    };
-  }
-
-  return {
-    language: 'en',
-    messageLocale: 'en',
-    formatLocale: 'en',
-  };
+  const language = String(locale || 'en').replace('_', '-').toLowerCase().split('-')[0];
+  if (language === 'es') return { language: 'es', messageLocale: 'es_419', formatLocale: 'es-AR' };
+  if (language === 'fr') return { language: 'fr', messageLocale: 'fr', formatLocale: 'fr-FR' };
+  return { language: 'en', messageLocale: 'en', formatLocale: 'en' };
 }
 
 async function fetchMessages(locale) {
-  const resp = await fetch(`_locales/${locale}/messages.json`);
-  return resp.ok ? resp.json() : {};
+  const response = await fetch(`_locales/${locale}/messages.json?v=${ASSET_VERSION}`);
+  return response.ok ? response.json() : {};
 }
 
 async function loadMessages() {
-  const localeConfig = getLocaleConfig(getRequestedLocale());
-  currentLocale = localeConfig.formatLocale;
-  currentLanguage = localeConfig.language;
-  currentMessageLocale = localeConfig.messageLocale;
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('lang') || (hasChromeI18n() && chrome.i18n.getUILanguage
+    ? chrome.i18n.getUILanguage() : navigator.language);
+  const locale = getLocaleConfig(requested);
+  currentLocale = locale.formatLocale;
+  currentLanguage = locale.language;
+  currentMessageLocale = locale.messageLocale;
   document.documentElement.lang = currentLanguage;
-
   if (hasChromeI18n()) return;
-
   try {
-    const fallbackMessages = await fetchMessages('en');
-    const localizedMessages = currentMessageLocale === 'en'
-      ? {}
-      : await fetchMessages(currentMessageLocale);
-    messages = { ...fallbackMessages, ...localizedMessages };
-  } catch (error) {
-    messages = {};
-  }
+    messages = {
+      ...await fetchMessages('en'),
+      ...(currentMessageLocale === 'en' ? {} : await fetchMessages(currentMessageLocale)),
+    };
+  } catch { messages = {}; }
 }
 
 function formatLocalMessage(messageData, substitutions) {
-  if (!messageData || !messageData.message) return '';
-
+  if (!messageData?.message) return '';
   let message = messageData.message;
   const values = Array.isArray(substitutions) ? substitutions : [substitutions];
-
   for (const [name, placeholder] of Object.entries(messageData.placeholders || {})) {
     const match = String(placeholder.content || '').match(/\$(\d+)/);
-    const value = match ? values[Number(match[1]) - 1] : '';
-    message = message.replace(new RegExp(`\\$${name}\\$`, 'gi'), value || '');
+    message = message.replace(new RegExp(`\\$${name}\\$`, 'gi'), match ? values[Number(match[1]) - 1] ?? '' : '');
   }
-
   return message;
 }
 
 function t(key, substitutions = []) {
   const values = Array.isArray(substitutions) ? substitutions : [substitutions];
-
   if (hasChromeI18n()) {
-    const message = chrome.i18n.getMessage(key, values);
-    if (message) return message;
+    const value = chrome.i18n.getMessage(key, values);
+    if (value) return value;
   }
-
   return formatLocalMessage(messages[key], values) || key;
 }
 
 function applyLocalizedStaticText() {
   document.title = t('extensionName');
-
-  for (const el of document.querySelectorAll('[data-i18n]')) {
-    el.textContent = t(el.dataset.i18n);
-  }
-
-  for (const el of document.querySelectorAll('[data-i18n-title]')) {
-    el.title = t(el.dataset.i18nTitle);
-  }
-
-  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
-    el.placeholder = t(el.dataset.i18nPlaceholder);
-  }
+  for (const element of document.querySelectorAll('[data-i18n]')) element.textContent = t(element.dataset.i18n);
+  for (const element of document.querySelectorAll('[data-i18n-title]')) element.title = t(element.dataset.i18nTitle);
+  for (const element of document.querySelectorAll('[data-i18n-placeholder]')) element.placeholder = t(element.dataset.i18nPlaceholder);
+  for (const element of document.querySelectorAll('[data-i18n-aria-label]')) element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel));
 }
 
-// ---- Color Bands (12 x 2-hour bands) ----
-// Each band: [topColor, bottomColor] as [r,g,b]
-const COLOR_BANDS = [
-  // 00:00–01:59  Deep navy / charcoal
-  { top: [15, 15, 40],    bottom: [20, 18, 35] },
-  // 02:00–03:59  Deep navy / charcoal
-  { top: [20, 18, 35],    bottom: [25, 22, 50] },
-  // 04:00–05:59  Dark indigo → pre-dawn purple
-  { top: [30, 25, 60],    bottom: [55, 40, 80] },
-  // 06:00–07:59  Dawn violet → soft peach/rose
-  { top: [80, 55, 100],   bottom: [180, 120, 130] },
-  // 08:00–09:59  Morning gold → warm amber
-  { top: [200, 150, 100], bottom: [220, 180, 110] },
-  // 10:00–11:59  Light yellow → warm white
-  { top: [235, 210, 140], bottom: [245, 235, 190] },
-  // 12:00–13:59  Bright pale yellow / cream
-  { top: [250, 240, 200], bottom: [248, 238, 195] },
-  // 14:00–15:59  Warm gold → soft orange
-  { top: [240, 210, 150], bottom: [225, 180, 110] },
-  // 16:00–17:59  Amber → deep peach / coral
-  { top: [215, 160, 100], bottom: [200, 120, 95] },
-  // 18:00–19:59  Sunset coral → dusky mauve
-  { top: [180, 100, 90],  bottom: [120, 70, 100] },
-  // 20:00–21:59  Twilight purple → slate blue
-  { top: [80, 55, 95],    bottom: [45, 40, 75] },
-  // 22:00–23:59  Deep slate → charcoal / navy
-  { top: [35, 30, 65],    bottom: [18, 16, 42] },
-];
-
-// ---- State ----
+// State and DOM
 let cities = [];
-let config = {
-  home: null,       // { city, country, tz }
-  zones: [],        // [{ tz, cities: [{city, country}] }]
-  use24h: false,
-  showSeconds: false,
-};
+let coordinates = {};
+let config = normalizeConfig({});
 let updateTimer = null;
 let searchSelectedIndex = -1;
-let lastCanvasMinute = -1;
-
-// ---- DOM refs ----
-const $canvas = document.getElementById('gradient-canvas');
-const ctx = $canvas.getContext('2d');
-const $columns = document.getElementById('columns');
-const $toolbar = document.getElementById('toolbar');
-const $addBtn = document.getElementById('add-btn');
-const $settingsBtn = document.getElementById('settings-btn');
-const $settingsPanel = document.getElementById('settings-panel');
-const $toggle24h = document.getElementById('toggle-24h');
-const $toggleSeconds = document.getElementById('toggle-seconds');
-const $searchOverlay = document.getElementById('search-overlay');
-const $searchInput = document.getElementById('search-input');
-const $searchResults = document.getElementById('search-results');
-const $firstRunModal = document.getElementById('first-run-modal');
-const $homeSearch = document.getElementById('home-search');
-const $homeResults = document.getElementById('home-results');
-const $homeDetected = document.getElementById('home-detected');
-const $toast = document.getElementById('toast');
-
-// ---- Toast ----
-
+let searchMode = 'add';
+let searchTargetTimeZone = null;
+let searchReturnFocus = null;
+let viewedOffsetMinutes = 0;
+let planningOpen = false;
+let editMode = false;
+let lastCanvasKey = '';
+let dragTimeZone = null;
 let toastTimer = null;
-function showToast(message) {
-  $toast.textContent = message;
+const transitionCache = new Map();
+
+const byId = id => document.getElementById(id);
+const $canvas = byId('gradient-canvas');
+const context = $canvas.getContext('2d');
+const $dashboard = byId('dashboard');
+const $columns = byId('columns');
+const $toolbar = byId('toolbar');
+const $addBtn = byId('add-btn');
+const $timeTravelBtn = byId('time-travel-btn');
+const $availabilityBtn = byId('availability-btn');
+const $editBtn = byId('edit-btn');
+const $settingsBtn = byId('settings-btn');
+const $settingsPanel = byId('settings-panel');
+const $toggle24h = byId('toggle-24h');
+const $toggleSeconds = byId('toggle-seconds');
+const $toggleMotion = byId('toggle-motion');
+const $densitySelect = byId('density-select');
+const $themeSelect = byId('theme-select');
+const $storageSelect = byId('storage-select');
+const $presetSelect = byId('preset-select');
+const $presetName = byId('preset-name');
+const $searchOverlay = byId('search-overlay');
+const $searchTitle = byId('search-title');
+const $searchInput = byId('search-input');
+const $searchResults = byId('search-results');
+const $searchMultiFooter = byId('search-multi-footer');
+const $searchMultiStatus = byId('search-multi-status');
+const $firstRunModal = byId('first-run-modal');
+const $onboardingHomeStep = byId('onboarding-home-step');
+const $onboardingGoalStep = byId('onboarding-goal-step');
+const $homeSearch = byId('home-search');
+const $homeResults = byId('home-results');
+const $homeDetected = byId('home-detected');
+const $planner = byId('planner');
+const $plannerTime = byId('planner-time');
+const $availabilitySummary = byId('availability-summary');
+const $timeSlider = byId('time-slider');
+const $toast = byId('toast');
+const $toastMessage = byId('toast-message');
+const $toastAction = byId('toast-action');
+
+// Feedback
+function showToast(message, action = null) {
+  if (toastTimer) clearTimeout(toastTimer);
+  $toastMessage.textContent = message;
+  $toastAction.classList.toggle('hidden', !action);
+  if (action) {
+    $toastAction.textContent = action.label;
+    $toastAction.onclick = () => { action.run(); hideToast(); };
+  } else $toastAction.onclick = null;
   $toast.classList.remove('hidden');
   requestAnimationFrame(() => $toast.classList.add('visible'));
+  toastTimer = setTimeout(hideToast, action ? 6000 : 2600);
+}
+
+function hideToast() {
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    $toast.classList.remove('visible');
-    setTimeout(() => $toast.classList.add('hidden'), 250);
-  }, 2200);
+  $toast.classList.remove('visible');
+  toastTimer = setTimeout(() => $toast.classList.add('hidden'), 220);
 }
 
-// ---- Gradient Engine ----
+// Time and formatting
+function viewedDate() { return new Date(Date.now() + viewedOffsetMinutes * 60000); }
+function getTimeInZone(timeZone, date = viewedDate()) { return getCoreTimeInZone(timeZone, currentLocale, date); }
 
-function lerpColor(a, b, t) {
-  return [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-  ];
-}
-
-function lerpColorRound(a, b, t) {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
-}
-
-function getGradientColors(hour, minute) {
-  const bandIndex = Math.floor(hour / 2);
-  const nextBandIndex = (bandIndex + 1) % 12;
-  const minutesIntoBand = (hour % 2) * 60 + minute;
-  const t = minutesIntoBand / 120;
-
-  const currentBand = COLOR_BANDS[bandIndex];
-  const nextBand = COLOR_BANDS[nextBandIndex];
-
-  const top = lerpColor(currentBand.top, nextBand.top, t);
-  const bottom = lerpColor(currentBand.bottom, nextBand.bottom, t);
-
-  return { top, bottom };
-}
-
-function rgb(c) {
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
-
-function getTextColor(topColor, bottomColor) {
-  const avg = [
-    (topColor[0] + bottomColor[0]) / 2,
-    (topColor[1] + bottomColor[1]) / 2,
-    (topColor[2] + bottomColor[2]) / 2,
-  ];
-  const luminance = (avg[0] * 299 + avg[1] * 587 + avg[2] * 114) / 1000;
-  return luminance > 128 ? 'rgba(0, 0, 0, 0.85)' : 'rgba(255, 255, 255, 0.95)';
-}
-
-// ---- Time Utilities ----
-
-function getTimeInZone(tz) {
-  const now = new Date();
-  const parts = {};
-  const formatter = new Intl.DateTimeFormat(currentLocale, {
-    timeZone: tz,
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-
-  for (const { type, value } of formatter.formatToParts(now)) {
-    parts[type] = value;
+function getTzAbbreviation(timeZone, date) {
+  const cacheKey = `${currentLocale}:${timeZone}`;
+  if (!timezoneNameFormatterCache.has(cacheKey)) {
+    timezoneNameFormatterCache.set(cacheKey, new Intl.DateTimeFormat(currentLocale, { timeZone, timeZoneName: 'short' }));
   }
-
-  const hour24Formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: tz,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const h24Parts = {};
-  for (const { type, value } of hour24Formatter.formatToParts(now)) {
-    h24Parts[type] = value;
-  }
-
-  return {
-    hour12: parts.hour,
-    minute: parts.minute,
-    second: parts.second,
-    ampm: parts.dayPeriod,
-    weekday: parts.weekday,
-    month: parts.month,
-    day: parts.day,
-    hour24: parseInt(h24Parts.hour, 10),
-    minute24: parseInt(h24Parts.minute, 10),
-  };
+  return timezoneNameFormatterCache.get(cacheKey).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
 }
 
-function getTzAbbreviation(tz) {
-  const formatter = new Intl.DateTimeFormat(currentLocale, {
-    timeZone: tz,
-    timeZoneName: 'short',
-  });
-  const parts = formatter.formatToParts(new Date());
-  const tzPart = parts.find(p => p.type === 'timeZoneName');
-  return tzPart ? tzPart.value : '';
+function formatClock(date, timeZone, includeDate = false) {
+  return new Intl.DateTimeFormat(currentLocale, {
+    timeZone,
+    ...(includeDate ? { weekday: 'short', month: 'short', day: 'numeric' } : {}),
+    hour: 'numeric', minute: '2-digit', hour12: !config.use24h,
+  }).format(date);
 }
 
-function getUtcOffset(tz) {
-  const now = new Date();
-  const utcStr = now.toLocaleString('en-US', { timeZone: 'UTC' });
-  const tzStr = now.toLocaleString('en-US', { timeZone: tz });
-  const diffMs = new Date(tzStr) - new Date(utcStr);
-  const diffMin = Math.round(diffMs / 60000);
-  const h = Math.floor(Math.abs(diffMin) / 60);
-  const m = Math.abs(diffMin) % 60;
-  const sign = diffMin >= 0 ? '+' : '-';
-  return m > 0 ? `UTC${sign}${h}:${String(m).padStart(2, '0')}` : `UTC${sign}${h}`;
+function formatInputTime(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-function getRelativeOffset(tz, homeTz) {
-  if (!homeTz || tz === homeTz) return '';
-  const now = new Date();
-  const homeStr = now.toLocaleString('en-US', { timeZone: homeTz });
-  const tzStr = now.toLocaleString('en-US', { timeZone: tz });
-  const diffMs = new Date(tzStr) - new Date(homeStr);
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin === 0) return 'same';
-  const h = Math.floor(Math.abs(diffMin) / 60);
-  const m = Math.abs(diffMin) % 60;
-  const sign = diffMin > 0 ? '+' : '-';
-  if (m > 0) return `${sign}${h}h ${m}m`;
-  return `${sign}${h}h`;
+function parseInputTime(value) {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
 }
 
-function isDST(tz) {
-  const jan = new Date(new Date().getFullYear(), 0, 1);
-  const jul = new Date(new Date().getFullYear(), 6, 1);
-  const janOffset = getOffsetMinutes(tz, jan);
-  const julOffset = getOffsetMinutes(tz, jul);
-  if (janOffset === julOffset) return false;
-  const nowOffset = getOffsetMinutes(tz, new Date());
-  return nowOffset !== Math.min(janOffset, julOffset);
+function getTransition(timeZone, date) {
+  const day = date.toISOString().slice(0, 10);
+  const key = `${timeZone}:${day}`;
+  if (!transitionCache.has(key)) transitionCache.set(key, getNextOffsetTransition(timeZone, date, 30));
+  return transitionCache.get(key);
 }
 
-function getOffsetMinutes(tz, date) {
-  const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
-  const tzStr = date.toLocaleString('en-US', { timeZone: tz });
-  return Math.round((new Date(tzStr) - new Date(utcStr)) / 60000);
+function formatTransition(transition, date) {
+  if (!transition) return '';
+  const hours = Math.max(1, Math.round((transition.at - date) / 3600000));
+  let when;
+  try {
+    const rtf = new Intl.RelativeTimeFormat(currentLocale, { numeric: 'auto' });
+    when = hours < 48 ? rtf.format(hours, 'hour') : rtf.format(Math.round(hours / 24), 'day');
+  } catch { when = hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`; }
+  return transition.deltaMinutes > 0 ? t('clocksMoveForward', when) : t('clocksMoveBack', when);
 }
 
-// ---- Rendering ----
+// Rendering
+function getCityKey(city, country) { return `${city}|${country}`; }
+function getLocalizedCityName(city) { return cityLocalization.names?.[getCityKey(city.city, city.country)] || city.city; }
 
 function renderColumns() {
-  $columns.innerHTML = '';
-  lastCanvasMinute = -1;
-  const sorted = getSortedZones();
+  $columns.replaceChildren();
+  lastCanvasKey = '';
+  config.zones.forEach((zone, index) => {
+    const column = document.createElement('section');
+    column.className = 'tz-column';
+    column.dataset.tz = zone.tz;
+    column.draggable = editMode;
+    column.tabIndex = editMode ? 0 : -1;
+    if (config.home?.tz === zone.tz) column.classList.add('is-home');
 
-  for (const zone of sorted) {
-    const col = document.createElement('div');
-    col.className = 'tz-column';
-    col.dataset.tz = zone.tz;
-
-    const isHome = config.home && zone.tz === config.home.tz;
-    if (isHome) col.classList.add('is-home');
-
-    // City label
     const cityNames = zone.cities.map(getLocalizedCityName).join(', ');
+    column.setAttribute('aria-label', config.home?.tz === zone.tz
+      ? `${cityNames} — ${t('homeTimezone')}` : `${cityNames} — ${zone.tz}`);
+
+    const content = document.createElement('div');
+    content.className = 'column-content';
+    content.tabIndex = 0;
     const cityLabel = document.createElement('div');
     cityLabel.className = 'city-label';
     cityLabel.textContent = cityNames;
-
-    // Time
     const timeDisplay = document.createElement('div');
     timeDisplay.className = 'time-display';
-
-    // Date
     const dateDisplay = document.createElement('div');
     dateDisplay.className = 'date-display';
+    const info = document.createElement('div');
+    info.className = 'tz-info';
+    const details = document.createElement('div');
+    details.className = 'tz-detail-card';
+    details.id = `details-${index}`;
+    content.setAttribute('aria-describedby', details.id);
+    content.append(cityLabel, timeDisplay, dateDisplay, info, details);
 
-    // TZ info
-    const tzInfo = document.createElement('div');
-    tzInfo.className = 'tz-info';
-
-    // Remove button
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-btn';
-    removeBtn.textContent = '×';
-    removeBtn.title = t('removeTimezone');
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeZone(zone.tz);
-    });
-
-    // Wrap content in a fixed-position container for alignment
-    const content = document.createElement('div');
-    content.className = 'column-content';
-    content.appendChild(cityLabel);
-    content.appendChild(timeDisplay);
-    content.appendChild(dateDisplay);
-    content.appendChild(tzInfo);
-
-    col.appendChild(removeBtn);
-    col.appendChild(content);
-
-    $columns.appendChild(col);
-  }
-
+    const cue = document.createElement('span');
+    cue.className = 'celestial-cue';
+    cue.setAttribute('aria-hidden', 'true');
+    const availabilityBand = document.createElement('span');
+    availabilityBand.className = 'availability-band';
+    availabilityBand.setAttribute('aria-hidden', 'true');
+    column.append(cue, availabilityBand, content, createEditControls(zone, index));
+    attachDragHandlers(column);
+    $columns.append(column);
+  });
+  document.body.classList.toggle('edit-mode', editMode);
   updateDisplay();
+}
+
+function createEditControls(zone, index) {
+  const controls = document.createElement('div');
+  controls.className = `edit-controls${editMode ? '' : ' hidden'}`;
+
+  const button = (label, text, handler, disabled = false) => {
+    const element = document.createElement('button');
+    element.type = 'button'; element.textContent = text; element.title = label;
+    element.setAttribute('aria-label', label); element.disabled = disabled;
+    element.addEventListener('click', handler); return element;
+  };
+  controls.append(
+    button(t('moveLeft'), '←', () => moveZone(zone.tz, -1), index === 0),
+    button(t('moveRight'), '→', () => moveZone(zone.tz, 1), index === config.zones.length - 1),
+  );
+  if (config.home?.tz !== zone.tz) {
+    controls.append(
+      button(t('setAsHome'), '⌂', () => setHome(zone.cities[0].city, zone.cities[0].country, zone.tz, true)),
+      button(t('removeTimezone'), '×', () => removeZone(zone.tz)),
+    );
+  }
+  controls.append(button(t('groupCity'), t('groupCityShort'), event => openSearch('group', event.currentTarget, zone.tz)));
+
+  const hours = document.createElement('label');
+  hours.className = 'hours-editor';
+  const enabled = document.createElement('input');
+  enabled.type = 'checkbox'; enabled.checked = zone.workingHours.enabled;
+  enabled.setAttribute('aria-label', t('includeWorkingHours'));
+  const start = document.createElement('input');
+  start.type = 'time'; start.value = formatInputTime(zone.workingHours.start);
+  start.setAttribute('aria-label', t('workingDayStarts'));
+  const end = document.createElement('input');
+  end.type = 'time'; end.value = formatInputTime(zone.workingHours.end);
+  end.setAttribute('aria-label', t('workingDayEnds'));
+  const update = () => {
+    zone.workingHours = { enabled: enabled.checked, start: parseInputTime(start.value), end: parseInputTime(end.value) };
+    saveConfig(); updateDisplay();
+  };
+  enabled.addEventListener('change', update); start.addEventListener('change', update); end.addEventListener('change', update);
+  const label = document.createElement('span'); label.textContent = t('hoursShort');
+  hours.append(enabled, label, start, document.createTextNode('–'), end);
+  controls.append(hours);
+  return controls;
+}
+
+function attachDragHandlers(column) {
+  column.addEventListener('dragstart', event => {
+    if (!editMode) { event.preventDefault(); return; }
+    dragTimeZone = column.dataset.tz; column.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', dragTimeZone);
+  });
+  column.addEventListener('dragend', () => {
+    dragTimeZone = null;
+    for (const item of $columns.children) item.classList.remove('dragging', 'drag-target');
+  });
+  column.addEventListener('dragover', event => {
+    if (!dragTimeZone || dragTimeZone === column.dataset.tz) return;
+    event.preventDefault(); column.classList.add('drag-target');
+  });
+  column.addEventListener('dragleave', () => column.classList.remove('drag-target'));
+  column.addEventListener('drop', event => {
+    event.preventDefault();
+    reorderZone(dragTimeZone, column.dataset.tz);
+  });
 }
 
 function updateDisplay() {
-  const columnEls = $columns.querySelectorAll('.tz-column');
-  const count = columnEls.length;
-  if (count === 0) return;
+  const columnElements = [...$columns.querySelectorAll('.tz-column')];
+  if (!columnElements.length) return;
+  const date = viewedDate();
+  const count = columnElements.length;
+  const canvasWidth = calculateLayoutWidth(innerWidth, count);
+  const canvasHeight = innerHeight;
+  const dpr = devicePixelRatio || 1;
+  const columnWidth = canvasWidth / count;
+  $columns.style.width = `${canvasWidth}px`;
+  $canvas.style.width = `${canvasWidth}px`; $canvas.style.height = `${canvasHeight}px`;
 
-  // Dynamic font size — scales inversely with column count
-  const timeSizeVw = Math.max(3, Math.min(7, 18 / count));
-  const timeSizePx = Math.max(32, Math.min(88, 360 / count));
-
-  // ---- Paint continuous gradient canvas ----
-  const canvasW = window.innerWidth;
-  const canvasH = window.innerHeight;
-  // Collect each column's gradient colors and time data
-  const colColors = [];
-  const colTimes = [];
-  for (const col of columnEls) {
-    const tz = col.dataset.tz;
-    const time = getTimeInZone(tz);
-    colColors.push(getGradientColors(time.hour24, time.minute24));
-    colTimes.push(time);
+  const times = [], colors = [], offsets = [];
+  for (const column of columnElements) {
+    const timeZone = column.dataset.tz;
+    const time = getTimeInZone(timeZone, date);
+    times.push(time); offsets.push(getOffsetMinutes(timeZone, date));
+    const fractionalMinute = time.minute24 + (config.atmosphericMotion && viewedOffsetMinutes === 0 ? Number(time.second) / 60 : 0);
+    colors.push(config.visualTheme === 'solar'
+      ? getSolarGradientColors(timeZone, coordinates[timeZone], date)
+      : getGradientColors(time.hour24, fractionalMinute));
   }
 
-  // Only repaint canvas when minute changes (gradients don't shift per-second)
-  const currentMinute = new Date().getMinutes();
-  const needsCanvasRepaint = currentMinute !== lastCanvasMinute ||
-    $canvas.width !== canvasW || $canvas.height !== canvasH;
-
-  const colWidth = canvasW / count;
-  // For each pixel column, figure out which two zone columns it sits between
-  // and blend their top/bottom colors, then draw a vertical gradient
-  if (needsCanvasRepaint) {
-  if ($canvas.width !== canvasW || $canvas.height !== canvasH) {
-    $canvas.width = canvasW;
-    $canvas.height = canvasH;
-  }
-  lastCanvasMinute = currentMinute;
-
-  // Paint pixel-perfect gradient with dithering to eliminate banding
-  const imageData = ctx.createImageData(canvasW, canvasH);
-  const pixels = imageData.data;
-
-  // Precompute horizontal top/bottom colors (float precision)
-  const hTopColors = new Float32Array(canvasW * 3);
-  const hBottomColors = new Float32Array(canvasW * 3);
-  for (let x = 0; x < canvasW; x++) {
-    const frac = (x + 0.5) / canvasW;
-    const centerPos = frac * count - 0.5;
-    const leftIdx = Math.max(0, Math.min(count - 1, Math.floor(centerPos)));
-    const rightIdx = Math.min(count - 1, leftIdx + 1);
-    const t = leftIdx === rightIdx ? 0 : Math.max(0, Math.min(1, centerPos - leftIdx));
-    const smooth = t * t * (3 - 2 * t);
-
-    const topColor = lerpColor(colColors[leftIdx].top, colColors[rightIdx].top, smooth);
-    const bottomColor = lerpColor(colColors[leftIdx].bottom, colColors[rightIdx].bottom, smooth);
-    const i3 = x * 3;
-    hTopColors[i3] = topColor[0]; hTopColors[i3 + 1] = topColor[1]; hTopColors[i3 + 2] = topColor[2];
-    hBottomColors[i3] = bottomColor[0]; hBottomColors[i3 + 1] = bottomColor[1]; hBottomColors[i3 + 2] = bottomColor[2];
-  }
-
-  // Fill pixel buffer with vertical interpolation + ordered dithering
-  // 4x4 Bayer matrix for dither (normalized to -0.5..+0.5 range)
-  const bayer4 = [
-    -0.5,    0.0,   -0.375,  0.125,
-     0.25,  -0.25,   0.375, -0.125,
-    -0.3125, 0.1875,-0.4375, 0.0625,
-     0.4375,-0.0625, 0.3125,-0.1875,
-  ];
-
-  for (let y = 0; y < canvasH; y++) {
-    const vt = y / (canvasH - 1);
-    const rowOffset = y * canvasW * 4;
-    const by = (y & 3) << 2; // bayer row: (y % 4) * 4
-    for (let x = 0; x < canvasW; x++) {
-      const i3 = x * 3;
-      const dither = bayer4[by + (x & 3)]; // ordered dither value
-      const pi = rowOffset + x * 4;
-      pixels[pi]     = Math.max(0, Math.min(255, Math.round(hTopColors[i3]     + (hBottomColors[i3]     - hTopColors[i3])     * vt + dither)));
-      pixels[pi + 1] = Math.max(0, Math.min(255, Math.round(hTopColors[i3 + 1] + (hBottomColors[i3 + 1] - hTopColors[i3 + 1]) * vt + dither)));
-      pixels[pi + 2] = Math.max(0, Math.min(255, Math.round(hTopColors[i3 + 2] + (hBottomColors[i3 + 2] - hTopColors[i3 + 2]) * vt + dither)));
-      pixels[pi + 3] = 255;
+  const canvasKey = `${Math.floor(date.getTime() / (config.atmosphericMotion && viewedOffsetMinutes === 0 ? 5000 : 60000))}:${canvasWidth}:${canvasHeight}:${dpr}:${config.visualTheme}`;
+  if (canvasKey !== lastCanvasKey) {
+    lastCanvasKey = canvasKey;
+    const backingWidth = Math.round(canvasWidth * dpr), backingHeight = Math.round(canvasHeight * dpr);
+    if ($canvas.width !== backingWidth) $canvas.width = backingWidth;
+    if ($canvas.height !== backingHeight) $canvas.height = backingHeight;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, canvasWidth, canvasHeight);
+    for (let x = 0; x < canvasWidth; x++) {
+      const position = ((x + .5) / canvasWidth) * count - .5;
+      const left = Math.max(0, Math.min(count - 1, Math.floor(position)));
+      const right = Math.min(count - 1, left + 1);
+      const raw = left === right ? 0 : Math.max(0, Math.min(1, position - left));
+      const amount = raw * raw * (3 - 2 * raw);
+      const top = lerpColor(colors[left].top, colors[right].top, amount).map(Math.round);
+      const bottom = lerpColor(colors[left].bottom, colors[right].bottom, amount).map(Math.round);
+      const gradient = context.createLinearGradient(0, 0, 0, canvasHeight);
+      gradient.addColorStop(0, `rgb(${top.join(',')})`); gradient.addColorStop(1, `rgb(${bottom.join(',')})`);
+      context.fillStyle = gradient; context.fillRect(x, 0, 1.25, canvasHeight);
     }
+    context.globalCompositeOperation = 'lighter';
+    colors.forEach(({ top, bottom }, index) => {
+      const centerX = (index + .5) * columnWidth, centerY = canvasHeight * .45;
+      const middle = lerpColorRound(top, bottom, .5);
+      const bright = lerpColorRound(middle, [255,255,255], .35);
+      const alpha = columnElements[index].classList.contains('is-home') ? .06 : .035;
+      const radius = Math.max(columnWidth * .7, canvasHeight * .3);
+      const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      glow.addColorStop(0, `rgba(${bright.join(',')},${alpha})`); glow.addColorStop(.5, `rgba(${bright.join(',')},${alpha * .4})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
+      context.fillStyle = glow; context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+    });
+    context.globalCompositeOperation = 'source-over';
   }
-  ctx.putImageData(imageData, 0, 0);
 
-  // Paint radial glows onto canvas — one per column center
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < count; i++) {
-    const cx = (i + 0.5) * colWidth;
-    const cy = canvasH * 0.45;
-    const rx = colWidth * 0.7;
-    const ry = canvasH * 0.3;
-    const { top, bottom } = colColors[i];
-    const mid = lerpColorRound(top, bottom, 0.5);
-    const bright = lerpColorRound(mid, [255, 255, 255], 0.35);
-    const isHome = columnEls[i].classList.contains('is-home');
-    const alpha = isHome ? 0.06 : 0.035;
+  const homeOffset = config.home ? getOffsetMinutes(config.home.tz, date) : null;
+  const timeSize = calculateTimeFontSize(columnWidth, config.use24h, config.showSeconds);
+  columnElements.forEach((column, index) => {
+    const timeZone = column.dataset.tz, time = times[index], color = colors[index];
+    const textColor = getTextColor(color.top, color.bottom); column.style.color = textColor;
+    const timeElement = column.querySelector('.time-display'); timeElement.style.fontSize = `${timeSize}px`;
+    const hour = config.use24h ? String(time.hour24).padStart(2, '0') : time.hour12;
+    const seconds = config.showSeconds ? `<span class="seconds">:${time.second}</span>` : '';
+    const period = config.use24h ? '' : `<span class="ampm">${time.ampm}</span>`;
+    timeElement.innerHTML = `${hour}:${time.minute}${seconds}${period}`;
+    column.querySelector('.date-display').textContent = time.dateLabel;
+    const relative = homeOffset === null ? '' : formatRelativeOffset(offsets[index], homeOffset);
+    column.querySelector('.tz-info').textContent = relative || (config.home?.tz === timeZone ? t('homeTimezone') : t('sameAsHome'));
+    const transition = getTransition(timeZone, date);
+    column.querySelector('.tz-detail-card').textContent = [
+      `${getTzAbbreviation(timeZone, date)} · ${formatUtcOffset(offsets[index])}`,
+      timeZone,
+      formatTransition(transition, date),
+    ].filter(Boolean).join('\n');
 
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
-    grad.addColorStop(0, `rgba(${bright[0]}, ${bright[1]}, ${bright[2]}, ${alpha})`);
-    grad.addColorStop(0.5, `rgba(${bright[0]}, ${bright[1]}, ${bright[2]}, ${alpha * 0.4})`);
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
-  }
-  ctx.globalCompositeOperation = 'source-over';
-  } // end needsCanvasRepaint
-
-  // ---- Update each column's text ----
-  for (let i = 0; i < count; i++) {
-    const col = columnEls[i];
-    const tz = col.dataset.tz;
-    const time = getTimeInZone(tz);
-    const { top, bottom } = colColors[i];
-
-    // Text color
-    const textColor = getTextColor(top, bottom);
-    col.style.color = textColor;
-
-    // Dynamic time size + time content
-    const timeEl = col.querySelector('.time-display');
-    timeEl.style.fontSize = `clamp(${timeSizePx * 0.6}px, ${timeSizeVw}vw, ${timeSizePx}px)`;
-    if (config.use24h) {
-      const h = String(time.hour24).padStart(2, '0');
-      const m = time.minute;
-      if (config.showSeconds) {
-        timeEl.innerHTML = `${h}:${m}<span class="seconds">:${time.second}</span>`;
-      } else {
-        timeEl.textContent = `${h}:${m}`;
-      }
-    } else {
-      const h = time.hour12;
-      const m = time.minute;
-      if (config.showSeconds) {
-        timeEl.innerHTML = `${h}:${m}<span class="seconds">:${time.second}</span><span class="ampm">${time.ampm}</span>`;
-      } else {
-        timeEl.innerHTML = `${h}:${m}<span class="ampm">${time.ampm}</span>`;
-      }
-    }
-
-    // Date
-    const dateEl = col.querySelector('.date-display');
-    dateEl.textContent = `${time.weekday}, ${time.month} ${time.day}`;
-
-    // TZ info
-    const tzInfoEl = col.querySelector('.tz-info');
-    const abbr = getTzAbbreviation(tz);
-    const utc = getUtcOffset(tz);
-    const relative = config.home ? getRelativeOffset(tz, config.home.tz) : '';
-    const dst = isDST(tz);
-
-    let infoHTML = `${abbr} · ${utc}`;
-    if (relative && relative !== 'same') {
-      infoHTML += `<span class="offset-relative">${relative}</span>`;
-    }
-    if (dst) {
-      infoHTML += `<br><span class="dst-badge">${t('dstBadge')}</span>`;
-    }
-    tzInfoEl.innerHTML = infoHTML;
-
-    // DST badge coloring
-    const badge = tzInfoEl.querySelector('.dst-badge');
-    if (badge) {
-      const avgLum = ((top[0] + bottom[0]) / 2 * 299 + (top[1] + bottom[1]) / 2 * 587 + (top[2] + bottom[2]) / 2 * 114) / 1000;
-      badge.style.background = avgLum > 128 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)';
-    }
-  }
-}
-
-function getSortedZones() {
-  if (config.zones.length === 0) return config.zones;
-  const now = new Date();
-  return [...config.zones].sort((a, b) => {
-    return getOffsetMinutes(a.tz, now) - getOffsetMinutes(b.tz, now);
+    const zone = config.zones.find(item => item.tz === timeZone);
+    const available = isMinuteWithinHours(getLocalMinuteOfDay(timeZone, date), zone.workingHours);
+    column.classList.toggle('is-available', available);
+    const cue = column.querySelector('.celestial-cue');
+    const celestial = getCelestialState(timeZone, coordinates[timeZone], date);
+    cue.className = `celestial-cue ${celestial.kind}`;
+    cue.style.left = `${15 + celestial.progress * 70}%`;
+    cue.style.top = `${42 - Math.sin(celestial.progress * Math.PI) * 18}%`;
   });
+
+  document.body.classList.toggle('density-compact', config.infoDensity === 'compact');
+  document.body.classList.toggle('atmosphere-enabled', config.atmosphericMotion);
+  updatePlanner(date);
 }
 
-// ---- Zone Management ----
+function updatePlanner(date) {
+  if (!config.home) return;
+  $plannerTime.textContent = formatClock(date, config.home.tz, true);
+  if (!config.availabilityEnabled) {
+    $availabilitySummary.textContent = t('enableAvailabilityHint'); return;
+  }
+  if (areZonesAvailable(config.zones, date)) {
+    $availabilitySummary.textContent = t('everyoneAvailableNow'); return;
+  }
+  const window = findAvailabilityWindows(config.zones, new Date())[0];
+  if (!window) { $availabilitySummary.textContent = t('noOverlapNext48'); return; }
+  const zoneLabels = [config.home.tz, ...config.zones.map(zone => zone.tz).filter(tz => tz !== config.home.tz)].slice(0, 2)
+    .map(timeZone => `${formatClock(window.start, timeZone)}–${formatClock(window.end, timeZone)}`);
+  $availabilitySummary.textContent = t('bestOverlap', zoneLabels.join(' / '));
+}
 
-function addZone(city, country, tz) {
-  const existing = config.zones.find(z => z.tz === tz);
+// Zone management
+function addZone(city, country, timeZone) {
+  const existing = config.zones.find(zone => zone.tz === timeZone);
   if (existing) {
-    if (existing.cities.some(c => c.city === city && c.country === country)) {
-      showToast(t('alreadyOnTimezone', getLocalizedCityName({ city, country })));
-      return;
+    if (existing.cities.some(item => item.city === city && item.country === country)) {
+      showToast(t('alreadyOnTimezone', getLocalizedCityName({ city, country }))); return false;
     }
-    if (existing.cities.length >= 3) {
-      showToast(t('maxCitiesPerTimezone'));
-      return;
-    }
+    if (existing.cities.length >= 3) { showToast(t('maxCitiesPerTimezone')); return false; }
     existing.cities.push({ city, country });
   } else {
-    if (config.zones.length >= 10) {
-      showToast(t('maxTimezones'));
-      return;
-    }
-    config.zones.push({ tz, cities: [{ city, country }] });
+    if (config.zones.length >= 10) { showToast(t('maxTimezones')); return false; }
+    config.zones.push({ tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
   }
-  saveConfig();
-  renderColumns();
+  saveConfig(); renderColumns(); return true;
 }
 
-function removeZone(tz) {
-  config.zones = config.zones.filter(z => z.tz !== tz);
-  saveConfig();
-  renderColumns();
-}
-
-function setHome(city, country, tz) {
-  config.home = { city, country, tz };
-  // Ensure home zone is in the zones list
-  const existing = config.zones.find(z => z.tz === tz);
-  if (!existing) {
-    config.zones.push({ tz, cities: [{ city, country }] });
-  }
-  saveConfig();
-}
-
-// ---- Storage ----
-
-async function loadConfig() {
-  return new Promise((resolve) => {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(['meridian_config'], (result) => {
-        if (result.meridian_config) {
-          config = { ...config, ...result.meridian_config };
-        }
-        resolve();
-      });
-    } else {
-      // Fallback for non-extension context (testing)
-      const stored = localStorage.getItem('meridian_config');
-      if (stored) {
-        config = { ...config, ...JSON.parse(stored) };
-      }
-      resolve();
-    }
+function removeZone(timeZone) {
+  if (config.home?.tz === timeZone) return;
+  const index = config.zones.findIndex(zone => zone.tz === timeZone);
+  if (index < 0) return;
+  const [removed] = config.zones.splice(index, 1);
+  saveConfig(); renderColumns();
+  showToast(t('timezoneRemoved', removed.cities.map(getLocalizedCityName).join(', ')), {
+    label: t('undo'), run: () => { config.zones.splice(index, 0, removed); saveConfig(); renderColumns(); },
   });
 }
 
-function saveConfig() {
-  const data = {
-    home: config.home,
-    zones: config.zones,
-    use24h: config.use24h,
-    showSeconds: config.showSeconds,
-  };
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.set({ meridian_config: data });
-  } else {
-    localStorage.setItem('meridian_config', JSON.stringify(data));
-  }
+function setHome(city, country, timeZone, announce = false) {
+  config.home = { city, country, tz: timeZone };
+  const existing = config.zones.find(zone => zone.tz === timeZone);
+  if (!existing) config.zones.push({ tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
+  else if (!existing.cities.some(item => item.city === city && item.country === country)) existing.cities.unshift({ city, country });
+  saveConfig(); renderColumns();
+  if (announce) showToast(t('homeChanged', getLocalizedCityName({ city, country })));
 }
 
-// ---- City Search ----
-
-async function loadCities() {
-  const resp = await fetch('data/cities.json');
-  cities = await resp.json();
+function moveZone(timeZone, direction) {
+  const index = config.zones.findIndex(zone => zone.tz === timeZone), target = index + direction;
+  if (index < 0 || target < 0 || target >= config.zones.length) return;
+  [config.zones[index], config.zones[target]] = [config.zones[target], config.zones[index]];
+  saveConfig(); renderColumns();
+  $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`)?.focus();
 }
 
-async function loadCityLocalization() {
-  try {
-    const resp = await fetch('data/city-locales.json');
-    const allCityLocalization = resp.ok ? await resp.json() : {};
-    cityLocalization = allCityLocalization[currentLanguage] || {};
-  } catch (error) {
-    cityLocalization = {};
-  }
-}
-
-function getCityKey(city, country) {
-  return `${city}|${country}`;
-}
-
-function getLocalizedCityName(city) {
-  const key = getCityKey(city.city, city.country);
-  return (cityLocalization.names && cityLocalization.names[key]) || city.city;
-}
-
-function getLocalizedCityAliases(city) {
-  const key = getCityKey(city.city, city.country);
-  return (cityLocalization.aliases && cityLocalization.aliases[key]) || [];
-}
-
-function getCountryName(countryCode) {
-  if (!countryDisplayNames) {
-    try {
-      countryDisplayNames = new Intl.DisplayNames([currentLocale], { type: 'region' });
-    } catch (error) {
-      countryDisplayNames = null;
-    }
-  }
-
-  if (!countryDisplayNames) return countryCode;
-  return countryDisplayNames.of(countryCode) || countryCode;
-}
-
-function getLocalizedTimezoneSearchText(tz) {
-  const cacheKey = `${currentLocale}:${tz}`;
-  if (timezoneSearchCache.has(cacheKey)) return timezoneSearchCache.get(cacheKey);
-
-  const names = [];
-  for (const timeZoneName of ['short', 'long', 'shortGeneric', 'longGeneric']) {
-    try {
-      const formatter = new Intl.DateTimeFormat(currentLocale, {
-        timeZone: tz,
-        timeZoneName,
-      });
-      const part = formatter.formatToParts(new Date()).find(p => p.type === 'timeZoneName');
-      if (part && part.value) names.push(part.value);
-    } catch (error) {
-      // Some browsers do not support generic timezone names.
-    }
-  }
-
-  const text = [...new Set(names)].join(' ');
-  timezoneSearchCache.set(cacheKey, text);
-  return text;
-}
-
-function normalizeForSearch(value) {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\u2019'.,-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function getCitySearchText(city) {
-  return [
-    city.city,
-    getLocalizedCityName(city),
-    ...getLocalizedCityAliases(city),
-    city.country,
-    getCountryName(city.country),
-    city.tz,
-    city.tz.replace(/[\/_]/g, ' '),
-    getLocalizedTimezoneSearchText(city.tz),
-  ].join(' ');
-}
-
-function searchCities(query) {
-  if (!query || query.length < 1) return [];
-  const q = normalizeForSearch(query);
-  const matches = cities.filter(c => normalizeForSearch(getCitySearchText(c)).includes(q));
-
-  // Deduplicate and prioritize starts-with
-  const seen = new Set();
-  const startsWith = [];
-  const includes = [];
-
-  for (const c of matches) {
-    const key = `${c.city}-${c.country}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const cityNames = [
-      c.city,
-      getLocalizedCityName(c),
-      ...getLocalizedCityAliases(c),
-    ];
-    if (cityNames.some(name => normalizeForSearch(name).startsWith(q))) {
-      startsWith.push(c);
-    } else {
-      includes.push(c);
-    }
-  }
-
-  return [...startsWith, ...includes].slice(0, 12);
-}
-
-function renderSearchResults(results, $list, onSelect) {
-  $list.innerHTML = '';
-  searchSelectedIndex = -1;
-
-  for (const city of results) {
-    const li = document.createElement('li');
-    const cityName = document.createElement('span');
-    cityName.className = 'city-name';
-    cityName.textContent = `${getLocalizedCityName(city)}, ${getCountryName(city.country)}`;
-
-    const cityTz = document.createElement('span');
-    cityTz.className = 'city-tz';
-    cityTz.textContent = city.tz;
-
-    li.appendChild(cityName);
-    li.appendChild(cityTz);
-    li.addEventListener('click', () => onSelect(city));
-    $list.appendChild(li);
-  }
-}
-
-function navigateResults($list, direction) {
-  const items = $list.querySelectorAll('li');
-  if (items.length === 0) return;
-
-  if (direction === 'down') {
-    searchSelectedIndex = Math.min(searchSelectedIndex + 1, items.length - 1);
-  } else {
-    searchSelectedIndex = Math.max(searchSelectedIndex - 1, 0);
-  }
-
-  items.forEach((li, i) => {
-    li.classList.toggle('selected', i === searchSelectedIndex);
-  });
-
-  items[searchSelectedIndex].scrollIntoView({ block: 'nearest' });
-}
-
-function selectCurrentResult($list) {
-  const items = $list.querySelectorAll('li');
-  if (searchSelectedIndex >= 0 && searchSelectedIndex < items.length) {
-    items[searchSelectedIndex].click();
-  }
-}
-
-// ---- Search Overlay ----
-
-function openSearch() {
-  $searchOverlay.classList.remove('hidden');
-  $searchInput.value = '';
-  $searchResults.innerHTML = '';
-  searchSelectedIndex = -1;
-  setTimeout(() => $searchInput.focus(), 50);
-}
-
-function closeSearch() {
-  $searchOverlay.classList.add('hidden');
-  $searchInput.value = '';
-  $searchResults.innerHTML = '';
-}
-
-$addBtn.addEventListener('click', openSearch);
-
-$searchOverlay.addEventListener('click', (e) => {
-  if (e.target === $searchOverlay) closeSearch();
-});
-
-$searchInput.addEventListener('input', () => {
-  const results = searchCities($searchInput.value);
-  renderSearchResults(results, $searchResults, (city) => {
-    addZone(city.city, city.country, city.tz);
-    closeSearch();
-  });
-});
-
-$searchInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeSearch();
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    navigateResults($searchResults, 'down');
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    navigateResults($searchResults, 'up');
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    selectCurrentResult($searchResults);
-  }
-});
-
-// ---- Settings ----
-
-$settingsBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  $settingsPanel.classList.toggle('hidden');
-});
-
-document.addEventListener('click', (e) => {
-  if (!$settingsPanel.contains(e.target) && e.target !== $settingsBtn) {
-    $settingsPanel.classList.add('hidden');
-  }
-});
-
-$toggle24h.addEventListener('change', () => {
-  config.use24h = $toggle24h.checked;
-  saveConfig();
-  updateDisplay();
-});
-
-$toggleSeconds.addEventListener('change', () => {
-  config.showSeconds = $toggleSeconds.checked;
-  saveConfig();
-  updateDisplay();
-});
-
-// ---- First-Run ----
-
-function showFirstRun() {
-  $firstRunModal.classList.remove('hidden');
-
-  const systemTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const detected = cities.find(c => c.tz === systemTz);
-
-  if (detected) {
-    $homeDetected.innerHTML = '';
-    const btn = document.createElement('button');
-    btn.textContent = t('useDetectedLocation', [
-      getLocalizedCityName(detected),
-      getCountryName(detected.country),
-      systemTz,
-    ]);
-    btn.addEventListener('click', () => {
-      setHome(detected.city, detected.country, detected.tz);
-      completeFirstRun();
-    });
-    $homeDetected.appendChild(btn);
-  } else {
-    $homeDetected.innerHTML = '';
-    const detectedMessage = document.createElement('p');
-    detectedMessage.className = 'detected-message';
-    detectedMessage.textContent = t('detectedSearchPrompt', systemTz);
-    $homeDetected.appendChild(detectedMessage);
-  }
-
-  $homeSearch.addEventListener('input', () => {
-    const results = searchCities($homeSearch.value);
-    renderSearchResults(results, $homeResults, (city) => {
-      setHome(city.city, city.country, city.tz);
-      completeFirstRun();
-    });
-  });
-
-  $homeSearch.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      navigateResults($homeResults, 'down');
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      navigateResults($homeResults, 'up');
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      selectCurrentResult($homeResults);
-    }
-  });
-
-  setTimeout(() => $homeSearch.focus(), 100);
-}
-
-function completeFirstRun() {
-  $firstRunModal.classList.add('hidden');
-  addDefaultZones();
-  renderColumns();
-  startTimer();
+function reorderZone(sourceTimeZone, targetTimeZone) {
+  const from = config.zones.findIndex(zone => zone.tz === sourceTimeZone);
+  const to = config.zones.findIndex(zone => zone.tz === targetTimeZone);
+  if (from < 0 || to < 0 || from === to) return;
+  const [zone] = config.zones.splice(from, 1); config.zones.splice(to, 0, zone);
+  saveConfig(); renderColumns();
 }
 
 function addDefaultZones() {
-  const defaults = [
-    'America/Los_Angeles',
-    'America/New_York',
-    'Europe/London',
-    'Europe/Berlin',
-    'Asia/Tokyo',
-  ];
-
-  for (const tz of defaults) {
-    if (tz === config.home.tz) continue;
-    if (config.zones.some(z => z.tz === tz)) continue;
-    const city = cities.find(c => c.tz === tz);
-    if (city && config.zones.length < 10) {
-      config.zones.push({ tz, cities: [{ city: city.city, country: city.country }] });
-    }
+  for (const { tz, city: preferredCity } of DEFAULT_TIMEZONES) {
+    if (config.zones.some(zone => zone.tz === tz)) continue;
+    const city = getRepresentativeCity(cities, tz, preferredCity);
+    if (city && config.zones.length < 10) config.zones.push({ tz, cities: [{ city: city.city, country: city.country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
   }
   saveConfig();
 }
 
-// ---- Timer ----
-
-function startTimer() {
-  if (updateTimer) clearInterval(updateTimer);
-  updateTimer = setInterval(updateDisplay, 1000);
+// Storage, presets, and backup
+function chromeStorage(area, method, ...args) {
+  return new Promise(resolve => {
+    if (!hasChromeStorage() || !chrome.storage?.[area]) { resolve(undefined); return; }
+    chrome.storage[area][method](...args, result => resolve(result));
+  });
 }
 
-// ---- Resize handling ----
-window.addEventListener('resize', () => updateDisplay());
+async function loadConfig() {
+  if (hasChromeStorage()) {
+    const local = await chromeStorage('local', 'get', ['meridian_config', 'meridian_storage_mode']);
+    const mode = local?.meridian_storage_mode || local?.meridian_config?.storageMode || 'local';
+    if (mode === 'sync' && chrome.storage.sync) {
+      const synced = await chromeStorage('sync', 'get', ['meridian_config']);
+      config = normalizeConfig(synced?.meridian_config || local?.meridian_config || {});
+      config.storageMode = 'sync';
+    } else config = normalizeConfig(local?.meridian_config || {});
+  } else {
+    try { config = normalizeConfig(JSON.parse(localStorage.getItem('meridian_config') || '{}')); }
+    catch { config = normalizeConfig({}); }
+  }
+}
 
-// ---- Keyboard Shortcuts ----
+function saveConfig() {
+  config = normalizeConfig(config);
+  if (hasChromeStorage()) {
+    chrome.storage.local.set({ meridian_storage_mode: config.storageMode });
+    if (config.storageMode === 'sync' && chrome.storage.sync) chrome.storage.sync.set({ meridian_config: config });
+    else chrome.storage.local.set({ meridian_config: config });
+  } else localStorage.setItem('meridian_config', JSON.stringify(config));
+  syncSettingsControls();
+}
 
-document.addEventListener('keydown', (e) => {
-  // Escape closes overlays
-  if (e.key === 'Escape') {
-    if (!$searchOverlay.classList.contains('hidden')) {
-      closeSearch();
+async function changeStorageMode(mode) {
+  config.storageMode = mode === 'sync' ? 'sync' : 'local';
+  if (hasChromeStorage()) {
+    if (config.storageMode === 'sync' && chrome.storage.sync) {
+      await chromeStorage('sync', 'set', { meridian_config: config });
+      await chromeStorage('local', 'set', { meridian_storage_mode: 'sync' });
+    } else {
+      await chromeStorage('local', 'set', { meridian_config: config, meridian_storage_mode: 'local' });
+      if (chrome.storage.sync) await chromeStorage('sync', 'remove', ['meridian_config']);
     }
-    if (!$settingsPanel.classList.contains('hidden')) {
-      $settingsPanel.classList.add('hidden');
-    }
+  } else localStorage.setItem('meridian_config', JSON.stringify(config));
+  showToast(t(config.storageMode === 'sync' ? 'syncEnabled' : 'localStorageEnabled'));
+}
+
+function renderPresets() {
+  const first = document.createElement('option'); first.value = ''; first.textContent = t('currentClocks');
+  $presetSelect.replaceChildren(first);
+  for (const preset of config.presets) {
+    const option = document.createElement('option'); option.value = preset.id; option.textContent = preset.name;
+    $presetSelect.append(option);
+  }
+  $presetSelect.value = config.activePresetId || '';
+  byId('delete-preset-btn').disabled = !config.activePresetId;
+}
+
+function savePreset() {
+  const name = $presetName.value.trim() || config.presets.find(item => item.id === config.activePresetId)?.name;
+  if (!name) { $presetName.focus(); showToast(t('enterPresetName')); return; }
+  let preset = config.presets.find(item => item.id === config.activePresetId && item.name === name);
+  if (!preset) {
+    if (config.presets.length >= 12) { showToast(t('maxPresets')); return; }
+    preset = { id: crypto.randomUUID ? crypto.randomUUID() : `preset-${Date.now()}` };
+    config.presets.push(preset);
+  }
+  Object.assign(preset, { id: preset.id, name, ...createPresetSnapshot(config) });
+  config.activePresetId = preset.id; $presetName.value = '';
+  saveConfig(); renderPresets(); showToast(t('presetSaved', name));
+}
+
+function activatePreset(id) {
+  if (!id) { config.activePresetId = null; saveConfig(); renderPresets(); return; }
+  const preset = config.presets.find(item => item.id === id); if (!preset) return;
+  const storageMode = config.storageMode, presets = config.presets;
+  config = normalizeConfig({ ...createPresetSnapshot(preset), presets, activePresetId: id, storageMode, onboardingComplete: true });
+  saveConfig(); renderColumns(); syncSettingsControls(); showToast(t('presetLoaded', preset.name));
+}
+
+function deletePreset() {
+  const preset = config.presets.find(item => item.id === config.activePresetId); if (!preset) return;
+  config.presets = config.presets.filter(item => item.id !== preset.id); config.activePresetId = null;
+  saveConfig(); renderPresets(); showToast(t('presetDeleted', preset.name));
+}
+
+function exportBackup() {
+  const payload = createBackup(config);
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = `meridian-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000); showToast(t('backupExported'));
+}
+
+async function importBackup(file) {
+  try {
+    const payload = JSON.parse(await file.text());
+    config = parseBackup(payload);
+    saveConfig(); renderColumns(); syncSettingsControls(); closeSettings(); showToast(t('backupImported'));
+  } catch { showToast(t('invalidBackup')); }
+}
+
+// Search
+async function loadData() {
+  const [cityResponse, localizationResponse, coordinateResponse] = await Promise.all([
+    fetch(`data/cities.json?v=${ASSET_VERSION}`),
+    fetch(`data/city-locales.json?v=${ASSET_VERSION}`),
+    fetch(`data/timezone-coordinates.json?v=${ASSET_VERSION}`),
+  ]);
+  cities = await cityResponse.json();
+  const allLocalizations = localizationResponse.ok ? await localizationResponse.json() : {};
+  cityLocalization = allLocalizations[currentLanguage] || {};
+  coordinates = coordinateResponse.ok ? await coordinateResponse.json() : {};
+}
+
+function getLocalizedCityAliases(city) { return cityLocalization.aliases?.[getCityKey(city.city, city.country)] || []; }
+function getCountryName(country) {
+  if (!countryDisplayNames) {
+    try { countryDisplayNames = new Intl.DisplayNames([currentLocale], { type: 'region' }); }
+    catch { countryDisplayNames = null; }
+  }
+  return countryDisplayNames?.of(country) || country;
+}
+
+function getLocalizedTimezoneSearchText(timeZone) {
+  const key = `${currentLocale}:${timeZone}`; if (timezoneSearchCache.has(key)) return timezoneSearchCache.get(key);
+  const names = [];
+  for (const timeZoneName of ['short', 'long', 'shortGeneric', 'longGeneric']) {
+    try {
+      const part = new Intl.DateTimeFormat(currentLocale, { timeZone, timeZoneName }).formatToParts(new Date()).find(item => item.type === 'timeZoneName');
+      if (part?.value) names.push(part.value);
+    } catch { /* generic names are not universal */ }
+  }
+  const value = [...new Set(names)].join(' '); timezoneSearchCache.set(key, value); return value;
+}
+
+function normalizeForSearch(value) {
+  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2019'.,-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function searchCities(query) {
+  if (!query) return [];
+  const normalized = normalizeForSearch(query), seen = new Set(), starts = [], includes = [];
+  for (const city of cities) {
+    const cityNames = [city.city, getLocalizedCityName(city), ...getLocalizedCityAliases(city)];
+    const text = [...cityNames, city.country, getCountryName(city.country), city.tz, city.tz.replace(/[\/_]/g, ' '), getLocalizedTimezoneSearchText(city.tz)].join(' ');
+    if (!normalizeForSearch(text).includes(normalized)) continue;
+    const key = getCityKey(city.city, city.country); if (seen.has(key)) continue; seen.add(key);
+    (cityNames.some(name => normalizeForSearch(name).startsWith(normalized)) ? starts : includes).push(city);
+  }
+  return [...starts, ...includes].slice(0, 12);
+}
+
+function renderSearchResults(results, list, onSelect) {
+  list.replaceChildren(); searchSelectedIndex = -1;
+  const input = list === $homeResults ? $homeSearch : $searchInput;
+  input.removeAttribute('aria-activedescendant'); input.setAttribute('aria-expanded', String(results.length > 0));
+  results.forEach((city, index) => {
+    const item = document.createElement('li'); item.id = `${list.id}-option-${index}`; item.role = 'option'; item.ariaSelected = 'false';
+    const name = document.createElement('span'); name.className = 'city-name'; name.textContent = `${getLocalizedCityName(city)}, ${getCountryName(city.country)}`;
+    const zone = document.createElement('span'); zone.className = 'city-tz'; zone.textContent = city.tz;
+    item.append(name, zone); item.addEventListener('click', () => onSelect(city)); list.append(item);
+  });
+}
+
+function navigateResults(list, direction) {
+  const items = [...list.querySelectorAll('li')]; if (!items.length) return;
+  searchSelectedIndex = direction === 'down' ? Math.min(searchSelectedIndex + 1, items.length - 1) : Math.max(searchSelectedIndex - 1, 0);
+  items.forEach((item, index) => { item.classList.toggle('selected', index === searchSelectedIndex); item.ariaSelected = String(index === searchSelectedIndex); });
+  const input = list === $homeResults ? $homeSearch : $searchInput;
+  input.setAttribute('aria-activedescendant', items[searchSelectedIndex].id); items[searchSelectedIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function selectCurrentResult(list) { const items = list.querySelectorAll('li'); items[searchSelectedIndex]?.click(); }
+
+function setPageInert(inert) { $dashboard.inert = inert; $toolbar.inert = inert; }
+
+function openSearch(mode = 'add', returnFocus = document.activeElement, targetTimeZone = null) {
+  closeSettings();
+  searchMode = mode; searchReturnFocus = returnFocus; searchTargetTimeZone = targetTimeZone;
+  $searchTitle.textContent = mode === 'home' ? t('changeHomeTimezone')
+    : mode === 'onboarding' ? t('addMyPeople')
+      : mode === 'group' ? t('addCityToTimezone', targetTimeZone)
+        : t('addTimezone');
+  $searchInput.placeholder = mode === 'home' ? t('searchYourCity') : t('searchCityOrTimezone');
+  $searchMultiFooter.classList.toggle('hidden', mode !== 'onboarding');
+  $searchMultiStatus.textContent = t('timezonesAdded', String(Math.max(0, config.zones.length - 1)));
+  $searchOverlay.classList.remove('hidden'); setPageInert(true);
+  $searchInput.value = ''; $searchResults.replaceChildren(); $searchInput.ariaExpanded = 'false';
+  setTimeout(() => $searchInput.focus(), 40);
+}
+
+function closeSearch() {
+  $searchOverlay.classList.add('hidden'); setPageInert(false); $searchInput.value = ''; $searchResults.replaceChildren();
+  $searchInput.ariaExpanded = 'false'; $searchInput.removeAttribute('aria-activedescendant');
+  searchReturnFocus?.focus?.(); searchReturnFocus = null;
+  searchTargetTimeZone = null;
+}
+
+// Onboarding
+function showGoalStep() {
+  $onboardingHomeStep.classList.add('hidden'); $onboardingGoalStep.classList.remove('hidden'); byId('goal-people').focus();
+}
+
+function finishOnboarding(goal) {
+  config.onboardingComplete = true;
+  if (goal === 'sample') addDefaultZones(); else saveConfig();
+  $firstRunModal.classList.add('hidden'); setPageInert(false); renderColumns(); startTimer();
+  if (goal === 'people') openSearch('onboarding', byId('add-btn'));
+}
+
+function showFirstRun() {
+  $firstRunModal.classList.remove('hidden'); setPageInert(true);
+  const systemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const detected = getRepresentativeCity(cities, systemTimeZone);
+  $homeDetected.replaceChildren();
+  if (detected) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.textContent = t('useDetectedLocation', [getLocalizedCityName(detected), getCountryName(detected.country), systemTimeZone]);
+    button.addEventListener('click', () => { setHome(detected.city, detected.country, detected.tz); showGoalStep(); });
+    $homeDetected.append(button);
+  } else {
+    const message = document.createElement('p'); message.className = 'detected-message'; message.textContent = t('detectedSearchPrompt', systemTimeZone); $homeDetected.append(message);
+  }
+  setTimeout(() => $homeSearch.focus(), 80);
+}
+
+// Planner, editing, settings
+function togglePlanner(force) {
+  planningOpen = typeof force === 'boolean' ? force : !planningOpen;
+  if (planningOpen && editMode) {
+    editMode = false; $editBtn.ariaPressed = 'false'; renderColumns();
+  }
+  $planner.classList.toggle('hidden', !planningOpen); document.body.classList.toggle('planning-mode', planningOpen);
+  $timeTravelBtn.ariaExpanded = String(planningOpen);
+  if (planningOpen) { updateDisplay(); $timeSlider.focus(); }
+}
+
+function returnToNow(close = false) {
+  viewedOffsetMinutes = 0; $timeSlider.value = '0'; lastCanvasKey = ''; updateDisplay();
+  if (close) togglePlanner(false);
+}
+
+function toggleEdit(force) {
+  const nextEditMode = typeof force === 'boolean' ? force : !editMode;
+  if (nextEditMode && planningOpen) returnToNow(true);
+  editMode = nextEditMode;
+  $editBtn.ariaPressed = String(editMode); renderColumns();
+}
+
+function toggleAvailability() {
+  config.availabilityEnabled = !config.availabilityEnabled;
+  $availabilityBtn.ariaPressed = String(config.availabilityEnabled);
+  document.body.classList.toggle('availability-mode', config.availabilityEnabled);
+  if (config.availabilityEnabled) togglePlanner(true);
+  saveConfig(); updateDisplay();
+}
+
+function openSettings() {
+  $settingsPanel.classList.remove('hidden'); $settingsBtn.ariaExpanded = 'true'; syncSettingsControls();
+}
+
+function closeSettings({ restoreFocus = false } = {}) {
+  const open = !$settingsPanel.classList.contains('hidden'); $settingsPanel.classList.add('hidden'); $settingsBtn.ariaExpanded = 'false';
+  if (open && restoreFocus) $settingsBtn.focus();
+}
+
+function syncSettingsControls() {
+  $toggle24h.checked = config.use24h; $toggleSeconds.checked = config.showSeconds; $toggleMotion.checked = config.atmosphericMotion;
+  $densitySelect.value = config.infoDensity; $themeSelect.value = config.visualTheme; $storageSelect.value = config.storageMode;
+  $availabilityBtn.ariaPressed = String(config.availabilityEnabled);
+  document.body.classList.toggle('availability-mode', config.availabilityEnabled);
+  renderPresets();
+}
+
+// Events
+$addBtn.addEventListener('click', () => openSearch('add', $addBtn));
+$timeTravelBtn.addEventListener('click', () => togglePlanner());
+$availabilityBtn.addEventListener('click', toggleAvailability);
+$editBtn.addEventListener('click', () => toggleEdit());
+$settingsBtn.addEventListener('click', event => { event.stopPropagation(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); });
+byId('settings-close').addEventListener('click', () => closeSettings({ restoreFocus: true }));
+byId('search-close').addEventListener('click', closeSearch);
+byId('search-done').addEventListener('click', closeSearch);
+byId('now-btn').addEventListener('click', () => returnToNow());
+$searchOverlay.addEventListener('click', event => { if (event.target === $searchOverlay && searchMode !== 'onboarding') closeSearch(); });
+document.addEventListener('click', event => { if (!$settingsPanel.contains(event.target) && event.target !== $settingsBtn) closeSettings(); });
+
+$timeSlider.addEventListener('input', () => { viewedOffsetMinutes = Number($timeSlider.value); lastCanvasKey = ''; updateDisplay(); });
+$timeSlider.addEventListener('keydown', event => {
+  const increments = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 60, PageDown: -60 };
+  if (increments[event.key]) {
+    event.preventDefault(); viewedOffsetMinutes = Math.max(0, Math.min(2880, viewedOffsetMinutes + increments[event.key]));
+    $timeSlider.value = String(viewedOffsetMinutes); updateDisplay();
   }
 });
 
-// ---- Init ----
+$searchInput.addEventListener('input', () => {
+  const results = searchCities($searchInput.value).filter(city => searchMode !== 'group' || city.tz === searchTargetTimeZone);
+  renderSearchResults(results, $searchResults, city => {
+  if (searchMode === 'home') { setHome(city.city, city.country, city.tz, true); closeSearch(); return; }
+  const added = addZone(city.city, city.country, city.tz);
+  if (searchMode === 'onboarding') {
+    if (added) showToast(t('timezoneAdded', getLocalizedCityName(city)));
+    $searchInput.value = ''; $searchResults.replaceChildren(); $searchMultiStatus.textContent = t('timezonesAdded', String(Math.max(0, config.zones.length - 1))); $searchInput.focus();
+  } else closeSearch();
+  });
+});
+
+function searchKeydown(event, list, close) {
+  if (event.key === 'Escape' && close) close();
+  else if (event.key === 'ArrowDown') { event.preventDefault(); navigateResults(list, 'down'); }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); navigateResults(list, 'up'); }
+  else if (event.key === 'Enter') { event.preventDefault(); selectCurrentResult(list); }
+}
+$searchInput.addEventListener('keydown', event => searchKeydown(event, $searchResults, searchMode === 'onboarding' ? null : closeSearch));
+$homeSearch.addEventListener('input', () => renderSearchResults(searchCities($homeSearch.value), $homeResults, city => { setHome(city.city, city.country, city.tz); showGoalStep(); }));
+$homeSearch.addEventListener('keydown', event => searchKeydown(event, $homeResults));
+byId('goal-people').addEventListener('click', () => finishOnboarding('people'));
+byId('goal-sample').addEventListener('click', () => finishOnboarding('sample'));
+byId('goal-home').addEventListener('click', () => finishOnboarding('home'));
+
+for (const [control, key, transform = value => value] of [
+  [$toggle24h, 'use24h', value => value], [$toggleSeconds, 'showSeconds', value => value], [$toggleMotion, 'atmosphericMotion', value => value],
+]) {
+  control.addEventListener('change', () => { config[key] = transform(control.checked); saveConfig(); lastCanvasKey = ''; updateDisplay(); startTimer(); });
+}
+$densitySelect.addEventListener('change', () => { config.infoDensity = $densitySelect.value; saveConfig(); updateDisplay(); });
+$themeSelect.addEventListener('change', () => { config.visualTheme = $themeSelect.value; saveConfig(); lastCanvasKey = ''; updateDisplay(); });
+$storageSelect.addEventListener('change', () => changeStorageMode($storageSelect.value));
+$presetSelect.addEventListener('change', () => activatePreset($presetSelect.value));
+byId('save-preset-btn').addEventListener('click', savePreset);
+byId('delete-preset-btn').addEventListener('click', deletePreset);
+byId('change-home-btn').addEventListener('click', () => { closeSettings(); openSearch('home', $settingsBtn); });
+byId('export-btn').addEventListener('click', exportBackup);
+byId('import-btn').addEventListener('click', () => byId('import-file').click());
+byId('import-file').addEventListener('change', event => { if (event.target.files[0]) importBackup(event.target.files[0]); event.target.value = ''; });
+
+document.addEventListener('keydown', event => {
+  if (event.defaultPrevented) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable;
+  if (event.key === 'Escape') {
+    if (!$searchOverlay.classList.contains('hidden')) { if (searchMode !== 'onboarding') closeSearch(); return; }
+    if (!$settingsPanel.classList.contains('hidden')) { closeSettings({ restoreFocus: true }); return; }
+    if (viewedOffsetMinutes) { returnToNow(); return; }
+    if (planningOpen) { togglePlanner(false); return; }
+    if (editMode) toggleEdit(false);
+    return;
+  }
+  if (typing || !$firstRunModal.classList.contains('hidden')) return;
+  if (event.key === '/' || event.key.toLowerCase() === 'a') { event.preventDefault(); openSearch('add'); }
+  else if (event.key.toLowerCase() === 't') { event.preventDefault(); togglePlanner(); }
+  else if (event.key.toLowerCase() === 'e') { event.preventDefault(); toggleEdit(); }
+  else if (event.key === ',') { event.preventDefault(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); }
+  else if (editMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && event.target.classList.contains('tz-column')) {
+    event.preventDefault(); moveZone(event.target.dataset.tz, event.key === 'ArrowLeft' ? -1 : 1);
+  }
+});
+
+// Lifecycle
+function startTimer() {
+  if (updateTimer) clearTimeout(updateTimer);
+  const interval = config.showSeconds ? 1000 : config.atmosphericMotion && viewedOffsetMinutes === 0 ? 5000 : 60000;
+  updateTimer = setTimeout(() => { updateDisplay(); startTimer(); }, interval - Date.now() % interval + 20);
+}
+
+let resizeFrame = null;
+addEventListener('resize', () => { if (resizeFrame) cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { resizeFrame = null; lastCanvasKey = ''; updateDisplay(); }); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (updateTimer) clearTimeout(updateTimer); updateTimer = null; }
+  else if (config.home) { updateDisplay(); startTimer(); }
+});
 
 async function init() {
-  await loadMessages();
-  applyLocalizedStaticText();
-  await loadCities();
-  await loadCityLocalization();
-  await loadConfig();
-
-  $toggle24h.checked = config.use24h;
-  $toggleSeconds.checked = config.showSeconds;
-
-  if (!config.home) {
-    showFirstRun();
-  } else {
-    renderColumns();
-    startTimer();
-  }
+  await loadMessages(); applyLocalizedStaticText(); await loadData(); await loadConfig(); syncSettingsControls();
+  if (!config.home || !config.onboardingComplete) showFirstRun();
+  else { renderColumns(); startTimer(); }
 }
 
 init();

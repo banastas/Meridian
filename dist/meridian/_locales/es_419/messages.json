@@ -11,6 +11,18 @@
   "settings": {
     "message": "Ajustes"
   },
+  "dashboardControls": {
+    "message": "Controles del tablero"
+  },
+  "worldClocks": {
+    "message": "Relojes mundiales"
+  },
+  "searchResults": {
+    "message": "Resultados de ciudades y husos horarios"
+  },
+  "homeSearchResults": {
+    "message": "Resultados de ciudades locales"
+  },
   "searchCityOrTimezone": {
     "message": "Buscá ciudad o huso horario..."
   },
@@ -23,6 +35,9 @@
   "showSeconds": {
     "message": "Mostrar segundos"
   },
+  "changeHomeTimezone": {
+    "message": "Cambiar huso horario local"
+  },
   "welcomeTitle": {
     "message": "Bienvenido a Meridian"
   },
@@ -31,6 +46,17 @@
   },
   "removeTimezone": {
     "message": "Quitar huso horario"
+  },
+  "removeNamedTimezone": {
+    "message": "Quitar el huso horario de $CITY$",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "homeTimezone": {
+    "message": "Huso horario local"
   },
   "alreadyOnTimezone": {
     "message": "$CITY$ ya está en este huso horario",
@@ -47,7 +73,7 @@
     "message": "Hasta 10 husos horarios; quitá uno para agregar otro"
   },
   "useDetectedLocation": {
-    "message": "Usar $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "message": "Usar el huso horario detectado: $CITY$, $COUNTRY$ ($TIMEZONE$)",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -70,5 +96,384 @@
   },
   "dstBadge": {
     "message": "HV"
+  },
+  "timeTravel": {
+    "message": "Viaje en el tiempo (T)",
+    "description": "Meridian product interface text."
+  },
+  "sharedAvailability": {
+    "message": "Disponibilidad compartida",
+    "description": "Meridian product interface text."
+  },
+  "editClocks": {
+    "message": "Editar relojes (E)",
+    "description": "Meridian product interface text."
+  },
+  "addTimezoneShortcut": {
+    "message": "Agregar zona horaria (A o /)",
+    "description": "Meridian product interface text."
+  },
+  "settingsShortcut": {
+    "message": "Configuración (,)",
+    "description": "Meridian product interface text."
+  },
+  "close": {
+    "message": "Cerrar",
+    "description": "Meridian product interface text."
+  },
+  "doneAdding": {
+    "message": "Terminar",
+    "description": "Meridian product interface text."
+  },
+  "display": {
+    "message": "Pantalla",
+    "description": "Meridian product interface text."
+  },
+  "informationDensity": {
+    "message": "Densidad de información",
+    "description": "Meridian product interface text."
+  },
+  "standard": {
+    "message": "Estándar",
+    "description": "Meridian product interface text."
+  },
+  "compact": {
+    "message": "Compacta",
+    "description": "Meridian product interface text."
+  },
+  "gradientTheme": {
+    "message": "Tema del gradiente",
+    "description": "Meridian product interface text."
+  },
+  "predictableClock": {
+    "message": "Reloj predecible",
+    "description": "Meridian product interface text."
+  },
+  "solarAware": {
+    "message": "Según el sol",
+    "description": "Meridian product interface text."
+  },
+  "atmosphericMotion": {
+    "message": "Atmósfera sutil",
+    "description": "Meridian product interface text."
+  },
+  "presets": {
+    "message": "Perfiles",
+    "description": "Meridian product interface text."
+  },
+  "activePreset": {
+    "message": "Perfil activo",
+    "description": "Meridian product interface text."
+  },
+  "currentClocks": {
+    "message": "Relojes actuales",
+    "description": "Meridian product interface text."
+  },
+  "presetName": {
+    "message": "Nombre del perfil",
+    "description": "Meridian product interface text."
+  },
+  "savePreset": {
+    "message": "Guardar",
+    "description": "Meridian product interface text."
+  },
+  "deletePreset": {
+    "message": "Eliminar perfil seleccionado",
+    "description": "Meridian product interface text."
+  },
+  "privacyAndBackup": {
+    "message": "Privacidad y respaldo",
+    "description": "Meridian product interface text."
+  },
+  "storage": {
+    "message": "Almacenamiento",
+    "description": "Meridian product interface text."
+  },
+  "localOnly": {
+    "message": "Solo local",
+    "description": "Meridian product interface text."
+  },
+  "chromeSync": {
+    "message": "Sincronización de Chrome",
+    "description": "Meridian product interface text."
+  },
+  "privacyNote": {
+    "message": "Tu lista de ciudades nunca sale del almacenamiento del navegador. La sincronización usa tu cuenta del navegador solo si la eliges.",
+    "description": "Meridian product interface text."
+  },
+  "exportBackup": {
+    "message": "Exportar JSON",
+    "description": "Meridian product interface text."
+  },
+  "importBackup": {
+    "message": "Importar JSON",
+    "description": "Meridian product interface text."
+  },
+  "keyboardShortcuts": {
+    "message": "Atajos de teclado",
+    "description": "Meridian product interface text."
+  },
+  "shortcutAdd": {
+    "message": "Agregar zona horaria",
+    "description": "Meridian product interface text."
+  },
+  "shortcutTravel": {
+    "message": "Viaje en el tiempo",
+    "description": "Meridian product interface text."
+  },
+  "shortcutEdit": {
+    "message": "Editar relojes",
+    "description": "Meridian product interface text."
+  },
+  "shortcutSettings": {
+    "message": "Configuración",
+    "description": "Meridian product interface text."
+  },
+  "shortcutEscape": {
+    "message": "Cerrar o volver a ahora",
+    "description": "Meridian product interface text."
+  },
+  "privateByDesign": {
+    "message": "Privado por diseño · funciona sin conexión",
+    "description": "Meridian product interface text."
+  },
+  "homeSet": {
+    "message": "Tu hogar está listo",
+    "description": "Meridian product interface text."
+  },
+  "buildYourWorld": {
+    "message": "Arma tu mundo",
+    "description": "Meridian product interface text."
+  },
+  "onboardingGoalBody": {
+    "message": "Elige un punto de partida. Luego puedes cambiarlo todo.",
+    "description": "Meridian product interface text."
+  },
+  "addMyPeople": {
+    "message": "Agregar mi equipo o familia",
+    "description": "Meridian product interface text."
+  },
+  "addMyPeopleHint": {
+    "message": "Elige varias ciudades rápidamente",
+    "description": "Meridian product interface text."
+  },
+  "worldClockSample": {
+    "message": "Muestra de relojes mundiales",
+    "description": "Meridian product interface text."
+  },
+  "worldClockSampleHint": {
+    "message": "Comienza con grandes ciudades del mundo",
+    "description": "Meridian product interface text."
+  },
+  "homeOnly": {
+    "message": "Solo mi hogar",
+    "description": "Meridian product interface text."
+  },
+  "homeOnlyHint": {
+    "message": "Mantén el lienzo minimalista",
+    "description": "Meridian product interface text."
+  },
+  "planningTime": {
+    "message": "Hora de planificación",
+    "description": "Meridian product interface text."
+  },
+  "timeTravelSlider": {
+    "message": "Viaje en el tiempo, en pasos de 15 minutos",
+    "description": "Meridian product interface text."
+  },
+  "now": {
+    "message": "Ahora",
+    "description": "Meridian product interface text."
+  },
+  "tomorrow": {
+    "message": "Mañana",
+    "description": "Meridian product interface text."
+  },
+  "twoDays": {
+    "message": "+48 h",
+    "description": "Meridian product interface text."
+  },
+  "returnToNow": {
+    "message": "Ahora",
+    "description": "Meridian product interface text."
+  },
+  "moveLeft": {
+    "message": "Mover a la izquierda",
+    "description": "Meridian product interface text."
+  },
+  "moveRight": {
+    "message": "Mover a la derecha",
+    "description": "Meridian product interface text."
+  },
+  "setAsHome": {
+    "message": "Definir como hogar",
+    "description": "Meridian product interface text."
+  },
+  "includeWorkingHours": {
+    "message": "Incluir esta zona en la disponibilidad compartida",
+    "description": "Meridian product interface text."
+  },
+  "workingDayStarts": {
+    "message": "Inicio de la jornada",
+    "description": "Meridian product interface text."
+  },
+  "workingDayEnds": {
+    "message": "Fin de la jornada",
+    "description": "Meridian product interface text."
+  },
+  "hoursShort": {
+    "message": "Horario",
+    "description": "Meridian product interface text."
+  },
+  "sameAsHome": {
+    "message": "Igual que en casa",
+    "description": "Meridian product interface text."
+  },
+  "clocksMoveForward": {
+    "message": "El reloj se adelanta $WHEN$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "clocksMoveBack": {
+    "message": "El reloj se atrasa $WHEN$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "enableAvailabilityHint": {
+    "message": "Activa la disponibilidad compartida para encontrar coincidencias.",
+    "description": "Meridian product interface text."
+  },
+  "everyoneAvailableNow": {
+    "message": "Todos están dentro de su horario ahora.",
+    "description": "Meridian product interface text."
+  },
+  "noOverlapNext48": {
+    "message": "No hay coincidencias en las próximas 48 horas.",
+    "description": "Meridian product interface text."
+  },
+  "bestOverlap": {
+    "message": "Mejor coincidencia: $WINDOWS$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "windows": {
+        "content": "$1"
+      }
+    }
+  },
+  "timezoneRemoved": {
+    "message": "Se eliminó $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "undo": {
+    "message": "Deshacer",
+    "description": "Meridian product interface text."
+  },
+  "homeChanged": {
+    "message": "$CITY$ ahora es tu hogar",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "timezoneAdded": {
+    "message": "Se agregó $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "timezonesAdded": {
+    "message": "$COUNT$ zonas horarias agregadas",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncEnabled": {
+    "message": "Sincronización de Chrome activada",
+    "description": "Meridian product interface text."
+  },
+  "localStorageEnabled": {
+    "message": "Ahora se guarda solo localmente",
+    "description": "Meridian product interface text."
+  },
+  "enterPresetName": {
+    "message": "Escribe un nombre para el perfil",
+    "description": "Meridian product interface text."
+  },
+  "maxPresets": {
+    "message": "Hasta 12 perfiles",
+    "description": "Meridian product interface text."
+  },
+  "presetSaved": {
+    "message": "Se guardó $NAME$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "presetLoaded": {
+    "message": "Se cargó $NAME$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "presetDeleted": {
+    "message": "Se eliminó $NAME$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "backupExported": {
+    "message": "Respaldo exportado",
+    "description": "Meridian product interface text."
+  },
+  "backupImported": {
+    "message": "Respaldo importado",
+    "description": "Meridian product interface text."
+  },
+  "invalidBackup": {
+    "message": "No es un respaldo válido de Meridian",
+    "description": "Meridian product interface text."
+  },
+  "groupCity": {
+    "message": "Agregar otra ciudad a esta zona horaria",
+    "description": "Accessible label for grouping a city with a timezone."
+  },
+  "groupCityShort": {
+    "message": "+ ciudad",
+    "description": "Compact edit-mode button for grouping a city."
+  },
+  "addCityToTimezone": {
+    "message": "Agregar una ciudad en $TIMEZONE$",
+    "description": "Title for timezone-scoped city search.",
+    "placeholders": { "timezone": { "content": "$1" } }
   }
 }

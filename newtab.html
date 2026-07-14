@@ -5,53 +5,135 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meridian</title>
   <link rel="icon" href="icons/icon16.png" sizes="16x16" type="image/png">
-  <link rel="stylesheet" href="newtab.css">
+  <link rel="stylesheet" href="newtab.css?v=2">
 </head>
 <body>
-  <!-- Toolbar -->
-  <div id="toolbar">
-    <button id="add-btn" title="Add timezone" data-i18n-title="addTimezone">+</button>
-    <button id="settings-btn" title="Settings" data-i18n-title="settings">⚙</button>
+  <div id="toolbar" role="toolbar" aria-label="Dashboard controls" data-i18n-aria-label="dashboardControls">
+    <button type="button" id="time-travel-btn" aria-controls="planner" aria-expanded="false" aria-label="Time travel" title="Time travel (T)" data-i18n-title="timeTravel" data-i18n-aria-label="timeTravel">◷</button>
+    <button type="button" id="availability-btn" aria-pressed="false" aria-label="Shared availability" title="Shared availability" data-i18n-title="sharedAvailability" data-i18n-aria-label="sharedAvailability">◫</button>
+    <button type="button" id="edit-btn" aria-pressed="false" aria-label="Edit clocks" title="Edit clocks (E)" data-i18n-title="editClocks" data-i18n-aria-label="editClocks">✎</button>
+    <button type="button" id="add-btn" title="Add timezone (A or /)" aria-label="Add timezone" data-i18n-title="addTimezoneShortcut" data-i18n-aria-label="addTimezone">+</button>
+    <button type="button" id="settings-btn" title="Settings (,)" aria-label="Settings" aria-controls="settings-panel" aria-expanded="false" data-i18n-title="settingsShortcut" data-i18n-aria-label="settings">⚙</button>
   </div>
 
-  <!-- Search overlay -->
-  <div id="search-overlay" class="hidden">
+  <div id="search-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="search-title">
     <div id="search-container">
-      <input type="text" id="search-input" placeholder="Search city or timezone..." data-i18n-placeholder="searchCityOrTimezone" autocomplete="off">
-      <ul id="search-results"></ul>
+      <div class="overlay-heading">
+        <h2 id="search-title" data-i18n="addTimezone">Add timezone</h2>
+        <button type="button" id="search-close" aria-label="Close" data-i18n-aria-label="close">×</button>
+      </div>
+      <input type="text" id="search-input" placeholder="Search city or timezone..." data-i18n-placeholder="searchCityOrTimezone" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="search-results" aria-expanded="false">
+      <ul id="search-results" role="listbox" aria-label="City and timezone results" data-i18n-aria-label="searchResults"></ul>
+      <div id="search-multi-footer" class="hidden">
+        <p id="search-multi-status"></p>
+        <button type="button" id="search-done" class="primary" data-i18n="doneAdding">Done adding</button>
+      </div>
     </div>
   </div>
 
-  <!-- Settings panel -->
-  <div id="settings-panel" class="hidden">
-    <label>
-      <input type="checkbox" id="toggle-24h"> <span data-i18n="format24h">24-hour format</span>
-    </label>
-    <label>
-      <input type="checkbox" id="toggle-seconds"> <span data-i18n="showSeconds">Show seconds</span>
-    </label>
-  </div>
+  <aside id="settings-panel" class="hidden" aria-label="Settings" data-i18n-aria-label="settings">
+    <div class="panel-heading">
+      <h2 data-i18n="settings">Settings</h2>
+      <button type="button" id="settings-close" aria-label="Close" data-i18n-aria-label="close">×</button>
+    </div>
 
-  <!-- First-run modal -->
-  <div id="first-run-modal" class="hidden">
+    <section>
+      <h3 data-i18n="display">Display</h3>
+      <label class="check-row"><input type="checkbox" id="toggle-24h"> <span data-i18n="format24h">24-hour format</span></label>
+      <label class="check-row"><input type="checkbox" id="toggle-seconds"> <span data-i18n="showSeconds">Show seconds</span></label>
+      <label class="field-row"><span data-i18n="informationDensity">Information density</span>
+        <select id="density-select"><option value="standard" data-i18n="standard">Standard</option><option value="compact" data-i18n="compact">Compact</option></select>
+      </label>
+      <label class="field-row"><span data-i18n="gradientTheme">Gradient theme</span>
+        <select id="theme-select"><option value="clock" data-i18n="predictableClock">Predictable clock</option><option value="solar" data-i18n="solarAware">Solar-aware</option></select>
+      </label>
+      <label class="check-row"><input type="checkbox" id="toggle-motion"> <span data-i18n="atmosphericMotion">Subtle atmosphere</span></label>
+    </section>
+
+    <section>
+      <h3 data-i18n="presets">Presets</h3>
+      <label class="visually-hidden" for="preset-select" data-i18n="activePreset">Active preset</label>
+      <select id="preset-select"><option value="" data-i18n="currentClocks">Current clocks</option></select>
+      <div class="inline-form">
+        <label class="visually-hidden" for="preset-name" data-i18n="presetName">Preset name</label>
+        <input id="preset-name" maxlength="40" data-i18n-placeholder="presetName" placeholder="Preset name">
+        <button type="button" id="save-preset-btn" data-i18n="savePreset">Save</button>
+      </div>
+      <button type="button" id="delete-preset-btn" class="danger-text" data-i18n="deletePreset">Delete selected preset</button>
+    </section>
+
+    <section>
+      <h3 data-i18n="privacyAndBackup">Privacy & backup</h3>
+      <label class="field-row"><span data-i18n="storage">Storage</span>
+        <select id="storage-select"><option value="local" data-i18n="localOnly">Local only</option><option value="sync" data-i18n="chromeSync">Chrome sync</option></select>
+      </label>
+      <p class="privacy-note" data-i18n="privacyNote">Your city list never leaves browser storage. Sync uses your browser account only when selected.</p>
+      <div class="button-row">
+        <button type="button" id="export-btn" data-i18n="exportBackup">Export JSON</button>
+        <button type="button" id="import-btn" data-i18n="importBackup">Import JSON</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden>
+      </div>
+    </section>
+
+    <section>
+      <button type="button" id="change-home-btn" data-i18n="changeHomeTimezone">Change home timezone</button>
+      <details id="shortcut-reference">
+        <summary data-i18n="keyboardShortcuts">Keyboard shortcuts</summary>
+        <dl>
+          <div><dt><kbd>A</kbd> / <kbd>/</kbd></dt><dd data-i18n="shortcutAdd">Add timezone</dd></div>
+          <div><dt><kbd>T</kbd></dt><dd data-i18n="shortcutTravel">Time travel</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd data-i18n="shortcutEdit">Edit clocks</dd></div>
+          <div><dt><kbd>,</kbd></dt><dd data-i18n="shortcutSettings">Settings</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd data-i18n="shortcutEscape">Close or return to now</dd></div>
+        </dl>
+      </details>
+    </section>
+  </aside>
+
+  <div id="first-run-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-title" aria-describedby="welcome-body">
     <div id="first-run-content">
-      <h1 data-i18n="welcomeTitle">Welcome to Meridian</h1>
-      <p data-i18n="welcomeBody">Select your home timezone to get started.</p>
-      <input type="text" id="home-search" placeholder="Search your city..." data-i18n-placeholder="searchYourCity" autocomplete="off">
-      <ul id="home-results"></ul>
-      <div id="home-detected"></div>
+      <div id="onboarding-home-step">
+        <p class="eyebrow" data-i18n="privateByDesign">Private by design · works offline</p>
+        <h1 id="welcome-title" data-i18n="welcomeTitle">Welcome to Meridian</h1>
+        <p id="welcome-body" data-i18n="welcomeBody">Select your home timezone to get started.</p>
+        <input type="text" id="home-search" placeholder="Search your city..." data-i18n-placeholder="searchYourCity" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="home-results" aria-expanded="false">
+        <ul id="home-results" role="listbox" aria-label="Home city results" data-i18n-aria-label="homeSearchResults"></ul>
+        <div id="home-detected"></div>
+      </div>
+      <div id="onboarding-goal-step" class="hidden">
+        <p class="eyebrow" data-i18n="homeSet">Home is set</p>
+        <h1 data-i18n="buildYourWorld">Build your world</h1>
+        <p data-i18n="onboardingGoalBody">Choose a starting point. You can change everything later.</p>
+        <div class="goal-options">
+          <button type="button" id="goal-people"><strong data-i18n="addMyPeople">Add my team or family</strong><span data-i18n="addMyPeopleHint">Quickly choose several cities</span></button>
+          <button type="button" id="goal-sample"><strong data-i18n="worldClockSample">World-clock sample</strong><span data-i18n="worldClockSampleHint">Start with six global cities</span></button>
+          <button type="button" id="goal-home"><strong data-i18n="homeOnly">Only my home</strong><span data-i18n="homeOnlyHint">Keep the canvas minimal</span></button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Toast for transient feedback -->
-  <div id="toast" class="hidden"></div>
+  <section id="planner" class="hidden" aria-label="Time travel" data-i18n-aria-label="timeTravel">
+    <div class="planner-copy">
+      <span class="eyebrow" data-i18n="planningTime">Planning time</span>
+      <strong id="planner-time"></strong>
+      <span id="availability-summary" aria-live="polite"></span>
+    </div>
+    <label class="timeline-field">
+      <span class="visually-hidden" data-i18n="timeTravelSlider">Time travel, in 15-minute steps</span>
+      <input id="time-slider" type="range" min="0" max="2880" step="15" value="0">
+      <span class="timeline-labels" aria-hidden="true"><span data-i18n="now">Now</span><span data-i18n="tomorrow">Tomorrow</span><span data-i18n="twoDays">+48h</span></span>
+    </label>
+    <button type="button" id="now-btn" class="primary" data-i18n="returnToNow">Now</button>
+  </section>
 
-  <!-- Continuous gradient canvas -->
-  <canvas id="gradient-canvas"></canvas>
+  <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"><span id="toast-message"></span><button type="button" id="toast-action" class="hidden"></button></div>
 
-  <!-- Timezone columns container -->
-  <div id="columns"></div>
+  <main id="dashboard" aria-label="World clocks" data-i18n-aria-label="worldClocks">
+    <canvas id="gradient-canvas" aria-hidden="true"></canvas>
+    <div id="columns"></div>
+  </main>
 
-  <script src="newtab.js"></script>
+  <script type="module" src="newtab.js?v=2.6"></script>
 </body>
 </html>
