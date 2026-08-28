@@ -1,6 +1,6 @@
 # Chrome Web Store assets
 
-Release artwork for Meridian 1.2.1:
+Release artwork for Meridian 1.2.2:
 
 | Asset | Dimensions | Format |
 | --- | ---: | --- |

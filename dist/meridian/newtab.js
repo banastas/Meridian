@@ -3,6 +3,7 @@
 import {
   DEFAULT_TIMEZONES,
   DEFAULT_WORKING_HOURS,
+  addZoneByUtcOffset,
   areZonesAvailable,
   calculateLayoutWidth,
   calculateTimeFontSize,
@@ -25,7 +26,7 @@ import {
   normalizeConfig,
   parseBackup,
   sortZonesByUtcOffset,
-} from './core.js?v=1.2.1';
+} from './core.js?v=1.2.2';
 
 // Localization
 let currentLocale = 'en';
@@ -36,7 +37,7 @@ let cityLocalization = {};
 let countryDisplayNames = null;
 const timezoneSearchCache = new Map();
 const timezoneNameFormatterCache = new Map();
-const ASSET_VERSION = '1.2.1';
+const ASSET_VERSION = '1.2.2';
 
 function hasChromeI18n() {
   return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.i18n?.getMessage;
@@ -499,7 +500,11 @@ function addZone(city, country, timeZone) {
     existing.cities.push({ city, country });
   } else {
     if (config.zones.length >= 10) { showToast(t('maxTimezones')); return false; }
-    config.zones.push({ tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
+    config.zones = addZoneByUtcOffset(config.zones, {
+      tz: timeZone,
+      cities: [{ city, country }],
+      workingHours: { ...DEFAULT_WORKING_HOURS },
+    });
   }
   saveConfig(); renderColumns(); return true;
 }

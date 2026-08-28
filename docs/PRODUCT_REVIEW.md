@@ -58,7 +58,7 @@ The first option should keep the city search open for rapid multi-select. This i
 
 ### 4. Add intentional ordering and presets
 
-**Implemented:** the first-run world sample is sorted west-to-east by its current UTC offsets; after onboarding, saved order is authoritative. Edit mode supports native drag-and-drop plus keyboard/button movement. Named presets snapshot clocks, order, home, schedules, and display preferences. Local-only remains default, Chrome sync is optional, and returning to local-only clears the synced Meridian record.
+**Implemented:** the first-run world sample and each newly expanded clock set are sorted west-to-east by their current UTC offsets, with stable ordering for equal offsets. Between additions, saved order is authoritative. Edit mode supports native drag-and-drop plus keyboard/button movement. Named presets snapshot clocks, order, home, schedules, and display preferences. Local-only remains default, Chrome sync is optional, and returning to local-only clears the synced Meridian record.
 
 UTC ordering is logical, but users also think in teams, trips, and relationships. Support drag or keyboard reordering, plus named presets such as “Work,” “Family,” and “Trip.” A preset should remember zones, order, home timezone, and display preferences.
 

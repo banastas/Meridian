@@ -14,6 +14,8 @@ Meridian is an offline-first Manifest V3 new-tab extension. Runtime code has no 
 
 Normalization repairs a missing home column, removes duplicate or malformed zones, clamps schedules, limits collection sizes, and migrates the original unversioned configuration without reopening onboarding. Presets deliberately exclude presets and storage mode, preventing recursive data and ensuring that activating a clock layout cannot change privacy behavior.
 
+New timezone columns are sorted by their UTC offset at the instant they are added, so the dashboard returns to a stable west-to-east current-time order. Timezones with the same current offset retain their relative order. Edit mode can then apply and persist an intentional manual order.
+
 ## Storage and portability
 
 Local-only is the default. Installed extension pages use `chrome.storage.local`; optional sync uses `chrome.storage.sync`. A local mode pointer determines which area to load. Switching back to local-only first saves the current configuration locally and then removes Meridian's sync record. Ordinary HTTP previews use origin-scoped `localStorage`, never a browser-provided Chrome shim.

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   DEFAULT_WORKING_HOURS,
   DEFAULT_TIMEZONES,
+  addZoneByUtcOffset,
   areZonesAvailable,
   calculateLayoutWidth,
   calculateTimeFontSize,
@@ -99,6 +100,34 @@ test('the first-run world sample sorts west to east without disturbing equal off
     'Berlin',
     'New York',
   ], 'sorting does not mutate saved user order');
+});
+
+test('a newly added timezone joins the current-time order with stable equal offsets', () => {
+  const date = new Date('2026-08-28T18:40:00Z');
+  const zones = [
+    { tz: 'America/Los_Angeles', label: 'Los Angeles' },
+    { tz: 'America/New_York', label: 'Boston' },
+    { tz: 'America/Argentina/Buenos_Aires', label: 'Buenos Aires' },
+    { tz: 'Europe/Madrid', label: 'Madrid' },
+    { tz: 'Europe/Bucharest', label: 'Bucharest' },
+  ];
+  const amsterdam = { tz: 'Europe/Amsterdam', label: 'Amsterdam' };
+
+  assert.deepEqual(addZoneByUtcOffset(zones, amsterdam, date).map(zone => zone.label), [
+    'Los Angeles',
+    'Boston',
+    'Buenos Aires',
+    'Madrid',
+    'Amsterdam',
+    'Bucharest',
+  ]);
+  assert.deepEqual(zones.map(zone => zone.label), [
+    'Los Angeles',
+    'Boston',
+    'Buenos Aires',
+    'Madrid',
+    'Bucharest',
+  ], 'adding a zone does not mutate the previous saved array');
 });
 
 test('locale-native date order is preserved', () => {

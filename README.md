@@ -14,6 +14,7 @@ Inspired by [Figure It Out](https://www.producthunt.com/products/fio-figure-it-o
 - **Solar-aware theme** — optional offline sunrise/sunset timing for all 415 included timezones
 - **Seamless column blending** — no hard edges between timezones, colors flow naturally
 - **599 cities** across all major IANA timezones
+- **Current-time ordering** — new timezone columns automatically join the west-to-east order, with equal offsets kept stable
 - **Dynamic typography** — time display scales inversely with column count
 - **Home timezone** — indicated with a subtle underline accent
 - **Instant city search** — fuzzy matching with keyboard navigation

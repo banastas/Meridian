@@ -183,6 +183,10 @@ export function sortZonesByUtcOffset(zones, date = new Date()) {
     .map(item => item.zone);
 }
 
+export function addZoneByUtcOffset(zones, zone, date = new Date()) {
+  return sortZonesByUtcOffset([...zones, zone], date);
+}
+
 export function isDaylightSavingTime(timeZone, date = new Date()) {
   const year = date.getFullYear();
   const januaryOffset = getOffsetMinutes(timeZone, new Date(year, 0, 1, 12));
