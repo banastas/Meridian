@@ -451,9 +451,16 @@ function updateDisplay() {
     const textColor = getTextColor(color.top, color.bottom); column.style.color = textColor;
     const timeElement = column.querySelector('.time-display'); timeElement.style.fontSize = `${timeSize}px`;
     const hour = config.use24h ? String(time.hour24).padStart(2, '0') : time.hour12;
-    const seconds = config.showSeconds ? `<span class="seconds">:${time.second}</span>` : '';
-    const period = config.use24h ? '' : `<span class="ampm">${time.ampm}</span>`;
-    timeElement.innerHTML = `${hour}:${time.minute}${seconds}${period}`;
+    const timeParts = [document.createTextNode(`${hour}:${time.minute}`)];
+    if (config.showSeconds) {
+      const seconds = document.createElement('span');
+      seconds.className = 'seconds'; seconds.textContent = `:${time.second}`; timeParts.push(seconds);
+    }
+    if (!config.use24h) {
+      const period = document.createElement('span');
+      period.className = 'ampm'; period.textContent = time.ampm; timeParts.push(period);
+    }
+    timeElement.replaceChildren(...timeParts);
     column.querySelector('.date-display').textContent = time.dateLabel;
     const relative = homeOffset === null ? '' : formatRelativeOffset(offsets[index], homeOffset);
     column.querySelector('.tz-info').textContent = relative || (config.home?.tz === timeZone ? t('homeTimezone') : t('sameAsHome'));

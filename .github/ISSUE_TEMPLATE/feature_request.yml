@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a focused improvement to Meridian
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the need or workflow before proposing the interface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+      description: Explain how the change could work while preserving Meridian's calm, private, offline-first experience.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Product principles
+      options:
+        - label: This can work without analytics or an application server.
+          required: true
+        - label: I searched existing issues for a similar request.
+          required: true

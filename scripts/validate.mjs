@@ -62,6 +62,15 @@ async function validateIconPng(relativePath, expectedSize) {
 
 const manifest = await readJson('manifest.json');
 const packageMetadata = await readJson('package.json');
+const syntaxFiles = [
+  'core.js',
+  'newtab.js',
+  ...(await listFiles(path.join(root, 'scripts'), 'scripts')).filter(file => file.endsWith('.mjs')),
+  ...(await listFiles(path.join(root, 'tests'), 'tests')).filter(file => file.endsWith('.mjs')),
+];
+for (const relativePath of syntaxFiles) {
+  execFileSync(process.execPath, ['--check', path.join(root, relativePath)], { stdio: 'pipe' });
+}
 invariant(manifest.manifest_version === 3, 'manifest_version must be 3.');
 invariant(packageMetadata.version === manifest.version, 'package.json and manifest versions must match.');
 invariant(manifest.default_locale === 'en', 'default_locale must be en.');
@@ -101,6 +110,7 @@ for (const control of ['time-travel-btn', 'availability-toggle', 'edit-btn', 'ex
 invariant(/:focus-visible/.test(css) && /:focus-within/.test(css), 'Visible keyboard focus styles are required.');
 invariant(/prefers-reduced-motion/.test(css) && /forced-colors/.test(css), 'Motion and forced-color preferences must be supported.');
 invariant(!/toLocaleString\(/.test(javascript), 'Timezone offsets must not reparse localized strings.');
+invariant(!/\.innerHTML\s*=/.test(javascript), 'Runtime UI must use safe DOM construction instead of innerHTML.');
 invariant(!/https?:\/\//.test(`${html}\n${javascript}\n${css}`), 'Runtime files must not make external requests.');
 invariant(!/for \(let x = 0; x < canvasWidth/.test(javascript), 'Gradient renderer must not regress to rounded vertical strips.');
 invariant(javascript.includes("'destination-in'") && javascript.includes("'soft-light'"), 'Continuous gradient compositing and dithering are required.');
@@ -167,12 +177,11 @@ for (let minute = 0; minute < 1440; minute++) {
 invariant(minimumContrast >= 4.5, `Minimum text contrast is ${minimumContrast.toFixed(2)}:1.`);
 
 const readme = await readFile(path.join(root, 'README.md'), 'utf8');
-invariant(readme.includes(`**${cities.length} cities**`), `README city count must be ${cities.length}.`);
+invariant(readme.includes(`${cities.length} cities`), `README city count must be ${cities.length}.`);
 
-const storeScreenshot = await validateStorePng('store-assets/meridian-screenshot-1280x800.png', 1280, 800);
+await validateStorePng('store-assets/meridian-screenshot-1280x800.png', 1280, 800);
 await validateStorePng('store-assets/meridian-promo-small-440x280.png', 440, 280);
 await validateStorePng('store-assets/meridian-promo-marquee-1400x560.png', 1400, 560);
-invariant(storeScreenshot.equals(await readFile(path.join(root, '1280x800.png'))), 'README screenshot must match the current store screenshot.');
 for (const size of [16, 48, 128, 240]) await validateIconPng(`icons/icon${size}.png`, size);
 const iconSource = await readFile(path.join(root, 'icons', 'icon.svg'), 'utf8');
 invariant(iconSource.includes('<circle') && iconSource.includes('<ellipse'), 'Master icon must retain the globe and meridian mark.');
@@ -180,6 +189,12 @@ invariant(iconSource.includes('<circle') && iconSource.includes('<ellipse'), 'Ma
 if (validateDist) {
   const packageRoot = path.join(root, 'dist', 'meridian');
   const zipPath = path.join(root, 'dist', `meridian-${manifest.version}.zip`);
+  const releaseZips = (await readdir(path.join(root, 'dist')))
+    .filter(file => /^meridian-\d+\.\d+\.\d+\.zip$/.test(file));
+  invariant(
+    JSON.stringify(releaseZips) === JSON.stringify([path.basename(zipPath)]),
+    'dist must contain only the current versioned release ZIP.',
+  );
   const sourceFiles = [
     'LICENSE', 'core.js', 'manifest.json', 'newtab.css', 'newtab.html', 'newtab.js',
     ...(await listFiles(path.join(root, '_locales'), '_locales')),

@@ -55,4 +55,4 @@ The canvas is composed from two continuous horizontal gradients: one for the top
 
 ## Release gate
 
-`npm run verify` validates manifest permissions, catalog parity, runtime privacy, offline coordinate completeness, accessibility primitives, DST edge cases, gradient contrast, all regression tests, packaged-file equality, and a deterministic root-correct Chrome Web Store ZIP. CI rebuilds the package and fails if committed `dist` artifacts differ.
+`npm run verify` validates JavaScript syntax, manifest permissions, catalog parity, runtime privacy, offline coordinate completeness, accessibility primitives, DST edge cases, gradient contrast, all regression tests, packaged-file equality, and a deterministic root-correct Chrome Web Store ZIP. The build removes obsolete versioned ZIPs so `dist` retains only the current release. CI rebuilds the package and fails if committed artifacts differ.

@@ -4,6 +4,21 @@
   "private": true,
   "type": "module",
   "description": "QA, validation, and deterministic release tooling for Meridian.",
+  "license": "MIT",
+  "homepage": "https://banast.as/meridian/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/banastas/Meridian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/banastas/Meridian/issues"
+  },
+  "keywords": [
+    "chrome-extension",
+    "new-tab",
+    "timezone",
+    "world-clock"
+  ],
   "engines": {
     "node": ">=20"
   },

@@ -46,6 +46,11 @@ async function listFiles(directory, prefix = '') {
 }
 
 await mkdir(distRoot, { recursive: true });
+for (const entry of await readdir(distRoot, { withFileTypes: true })) {
+  if (entry.isFile() && /^meridian-\d+\.\d+\.\d+\.zip$/.test(entry.name) && entry.name !== path.basename(zipPath)) {
+    await rm(path.join(distRoot, entry.name));
+  }
+}
 await rm(packageRoot, { recursive: true, force: true });
 await mkdir(packageRoot, { recursive: true });
 
