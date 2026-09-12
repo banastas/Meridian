@@ -1,5 +1,13 @@
 # Chrome Web Store assets
 
+## GitHub social preview
+
+`meridian-github-social-preview-1280x640.png` is the repository sharing image, sized to the supplied GitHub template. It uses Meridian's existing gradient, globe mark, and tagline, with inset content for crop safety. Upload this file as the repository's social preview; adding it to the repository alone does not activate it on GitHub.
+
+The built-in image generation prompt and reference details are saved in [github-social-preview-prompt.md](github-social-preview-prompt.md).
+
+## Store artwork
+
 Release artwork for Meridian 1.2.2:
 
 | Asset | Dimensions | Format |
