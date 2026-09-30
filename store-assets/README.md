@@ -8,7 +8,7 @@ The built-in image generation prompt and reference details are saved in [github-
 
 ## Store artwork
 
-Release artwork for Meridian 1.2.2:
+Release artwork for Meridian 1.2.3:
 
 | Asset | Dimensions | Format |
 | --- | ---: | --- |

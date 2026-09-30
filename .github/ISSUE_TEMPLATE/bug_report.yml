@@ -12,7 +12,7 @@ body:
     attributes:
       label: Meridian version
       description: Find this on the Chrome Web Store listing or extension details page.
-      placeholder: 1.2.2
+      placeholder: 1.2.3
     validations:
       required: true
   - type: input
