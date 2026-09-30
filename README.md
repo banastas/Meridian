@@ -12,18 +12,18 @@ Meridian is a private, offline-first Chrome extension that turns every new tab i
 
 ## Highlights
 
-- **A living view of time:** Twelve color bands interpolate by the minute and blend across one high-resolution canvas.
-- **Planning across locations:** Move every clock up to 48 hours ahead in 15-minute steps and find shared availability from configurable working or waking hours.
-- **599 cities and 415 IANA time zones:** Search by localized city, country, time-zone name, or alias.
+- **A living view of time:** Twelve color bands interpolate by the minute and blend across one continuous canvas.
+- **Planning across locations:** Move every clock up to 48 hours ahead in quarter-hour steps, see each day boundary on the timeline, and jump to the next shared availability window from configurable working hours and working days.
+- **599 cities and 415 IANA time zones:** Search by localized city, country, time-zone name, abbreviation such as IST or CET, or alias, with each result's local time.
 - **Flexible clock sets:** Reorder and group clocks, choose a home time zone, and save named presets for work, family, or travel.
 - **Useful display controls:** Choose 12-hour or 24-hour time, optional seconds, compact density, and fixed-clock or solar-aware gradients.
-- **Four localized experiences:** English, French, Spanish, and Argentine Spanish cover the interface, dates, country names, and city aliases.
+- **Four localized experiences:** English, French, Spanish, and Argentine Spanish cover the interface, dates, country names, and city aliases, with regional date order and clock format.
 - **Keyboard and accessibility support:** Add, plan, edit, and open settings without a mouse. Reduced motion, forced colors, focus states, and WCAG-aware text contrast are built in.
 - **Private portability:** Keep settings local, opt into Chrome Sync, or export and import a versioned JSON backup.
 
 ## Privacy
 
-Meridian requests one permission: `storage`. Local-only storage is the default. Optional Chrome Sync uses the browser's signed-in storage, and switching back to local-only removes Meridian's synced configuration.
+Meridian requests one permission: `storage`. Local-only storage is the default. Optional Chrome Sync uses the browser's signed-in storage: turning it on uses clocks already synced from your other browsers, a new install picks them up automatically, and switching back to local-only removes Meridian's synced configuration. Importing a backup never changes where settings are stored.
 
 The extension has no analytics, tracking, advertising, application server, location permission, or runtime network requests. Fonts, city data, translations, and time-zone coordinates are bundled with the extension.
 

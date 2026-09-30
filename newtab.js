@@ -1,19 +1,26 @@
 'use strict';
 
 import {
+  CONFIG_STORAGE_KEY,
   DEFAULT_TIMEZONES,
   DEFAULT_WORKING_HOURS,
+  MAX_PRESETS,
+  MAX_TIMEZONES,
+  PLANNER_RANGE_MINUTES,
   addZoneByUtcOffset,
   areZonesAvailable,
   calculateLayoutWidth,
   calculateTimeFontSize,
   createBackup,
+  createConfigStore,
   createPresetSnapshot,
+  createSearchEntry,
   findAvailabilityWindows,
+  floorToStep,
   formatRelativeOffset,
   formatUtcOffset,
+  getDayStarts,
   getGradientColors,
-  getLocalMinuteOfDay,
   getNextOffsetTransition,
   getOffsetMinutes,
   getRepresentativeCity,
@@ -21,14 +28,20 @@ import {
   getSmoothGradientStops,
   getTextColor,
   getTimeInZone as getCoreTimeInZone,
-  isMinuteWithinHours,
+  getTimeZoneSearchNames,
+  getZonedDateParts,
+  isZoneAvailableAt,
   lerpColorRound,
   normalizeConfig,
   parseBackup,
+  prefers24HourClock,
+  resolveLocale,
+  searchEntries,
   sortZonesByUtcOffset,
 } from './core.js?v=1.2.2';
 
 // Localization
+let browserLocale = 'en';
 let currentLocale = 'en';
 let currentLanguage = 'en';
 let currentMessageLocale = 'en';
@@ -47,13 +60,6 @@ function hasChromeStorage() {
   return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.storage?.local;
 }
 
-function getLocaleConfig(locale) {
-  const language = String(locale || 'en').replace('_', '-').toLowerCase().split('-')[0];
-  if (language === 'es') return { language: 'es', messageLocale: 'es_419', formatLocale: 'es-AR' };
-  if (language === 'fr') return { language: 'fr', messageLocale: 'fr', formatLocale: 'fr-FR' };
-  return { language: 'en', messageLocale: 'en', formatLocale: 'en' };
-}
-
 async function fetchMessages(locale) {
   const response = await fetch(`_locales/${locale}/messages.json?v=${ASSET_VERSION}`);
   return response.ok ? response.json() : {};
@@ -63,11 +69,12 @@ async function loadMessages() {
   const params = new URLSearchParams(location.search);
   const requested = params.get('lang') || (hasChromeI18n() && chrome.i18n.getUILanguage
     ? chrome.i18n.getUILanguage() : navigator.language);
-  const locale = getLocaleConfig(requested);
+  const locale = resolveLocale(requested);
+  browserLocale = String(requested || locale.formatLocale).replace(/_/g, '-');
   currentLocale = locale.formatLocale;
   currentLanguage = locale.language;
   currentMessageLocale = locale.messageLocale;
-  document.documentElement.lang = currentLanguage;
+  document.documentElement.lang = currentLocale;
   if (hasChromeI18n()) return;
   try {
     messages = {
@@ -115,12 +122,20 @@ let searchMode = 'add';
 let searchTargetTimeZone = null;
 let searchReturnFocus = null;
 let viewedOffsetMinutes = 0;
+// Time travel counts from the quarter hour that was current when it began,
+// so planned times stay put while the planner is open.
+let planningOrigin = floorToStep(Date.now());
 let planningOpen = false;
 let editMode = false;
 let lastCanvasKey = '';
 let dragTimeZone = null;
 let toastTimer = null;
+let summaryKey = '';
+let timelineKey = '';
 const transitionCache = new Map();
+// The gradient has no edges, so it is painted at 1× and scaled up; a
+// full-resolution backing store costs about 120 MB on a 10-clock 5K display.
+const MAX_CANVAS_PIXEL_RATIO = 1;
 
 const byId = id => document.getElementById(id);
 const $canvas = byId('gradient-canvas');
@@ -167,13 +182,21 @@ const $searchMultiStatus = byId('search-multi-status');
 const $firstRunModal = byId('first-run-modal');
 const $onboardingHomeStep = byId('onboarding-home-step');
 const $onboardingGoalStep = byId('onboarding-goal-step');
+const $searchEmpty = byId('search-empty');
 const $homeSearch = byId('home-search');
 const $homeResults = byId('home-results');
+const $homeEmpty = byId('home-empty');
 const $homeDetected = byId('home-detected');
+const $homeSetLabel = byId('home-set-label');
 const $planner = byId('planner');
 const $plannerTime = byId('planner-time');
+const $plannerOffset = byId('planner-offset');
 const $availabilitySummary = byId('availability-summary');
+const $settingsAvailability = byId('settings-availability');
 const $timeSlider = byId('time-slider');
+const $timelineDays = byId('timeline-days');
+const $scrollLeft = byId('scroll-left');
+const $scrollRight = byId('scroll-right');
 const $toast = byId('toast');
 const $toastMessage = byId('toast-message');
 const $toastAction = byId('toast-action');
@@ -198,8 +221,22 @@ function hideToast() {
   toastTimer = setTimeout(() => $toast.classList.add('hidden'), 220);
 }
 
+// Keep the toast (and its Undo action) open while it is hovered or focused.
+function pauseToast() {
+  if (toastTimer && $toast.classList.contains('visible')) { clearTimeout(toastTimer); toastTimer = null; }
+}
+function resumeToast() {
+  if (!toastTimer && $toast.classList.contains('visible') && !$toast.matches(':hover, :focus-within')) {
+    toastTimer = setTimeout(hideToast, 2000);
+  }
+}
+$toast.addEventListener('mouseenter', pauseToast); $toast.addEventListener('focusin', pauseToast);
+$toast.addEventListener('mouseleave', resumeToast); $toast.addEventListener('focusout', resumeToast);
+
 // Time and formatting
-function viewedDate() { return new Date(Date.now() + viewedOffsetMinutes * 60000); }
+function viewedDate() {
+  return viewedOffsetMinutes ? new Date(planningOrigin + viewedOffsetMinutes * 60000) : new Date();
+}
 function getTimeInZone(timeZone, date = viewedDate()) { return getCoreTimeInZone(timeZone, currentLocale, date); }
 
 function getTzAbbreviation(timeZone, date) {
@@ -210,12 +247,17 @@ function getTzAbbreviation(timeZone, date) {
   return timezoneNameFormatterCache.get(cacheKey).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
 }
 
+const clockFormatterCache = new Map();
 function formatClock(date, timeZone, includeDate = false) {
-  return new Intl.DateTimeFormat(currentLocale, {
-    timeZone,
-    ...(includeDate ? { weekday: 'short', month: 'short', day: 'numeric' } : {}),
-    hour: 'numeric', minute: '2-digit', hour12: !config.use24h,
-  }).format(date);
+  const key = `${currentLocale}:${timeZone}:${includeDate}:${config.use24h}`;
+  if (!clockFormatterCache.has(key)) {
+    clockFormatterCache.set(key, new Intl.DateTimeFormat(currentLocale, {
+      timeZone,
+      ...(includeDate ? { weekday: 'short', month: 'short', day: 'numeric' } : {}),
+      hour: 'numeric', minute: '2-digit', hour12: !config.use24h,
+    }));
+  }
+  return clockFormatterCache.get(key).format(date);
 }
 
 function formatInputTime(minutes) {
@@ -227,11 +269,15 @@ function parseInputTime(value) {
   return hour * 60 + minute;
 }
 
+// Cached per hour; an entry is discarded once its transition is in the past.
 function getTransition(timeZone, date) {
-  const day = date.toISOString().slice(0, 10);
-  const key = `${timeZone}:${day}`;
-  if (!transitionCache.has(key)) transitionCache.set(key, getNextOffsetTransition(timeZone, date, 30));
-  return transitionCache.get(key);
+  const key = `${timeZone}:${Math.floor(date.getTime() / 3600000)}`;
+  const cached = transitionCache.get(key);
+  if (cached !== undefined && (!cached || cached.at > date)) return cached;
+  const transition = getNextOffsetTransition(timeZone, date, 30);
+  if (transitionCache.size > 500) transitionCache.clear();
+  transitionCache.set(key, transition);
+  return transition;
 }
 
 function formatTransition(transition, date) {
@@ -293,46 +339,122 @@ function renderColumns() {
   updateDisplay();
 }
 
+// Edit icons live in a <template> in newtab.html beside the toolbar icons.
+const $editIcons = byId('edit-icons').content;
+function createEditIcon(action) {
+  return $editIcons.querySelector(`[data-icon="${action}"]`)?.cloneNode(true) || null;
+}
+
+// Weekday chips start on the locale's first day and use two letters, because
+// one-letter names repeat (S, T in English; M in French).
+let weekdayCache = null;
+function getWeekdays() {
+  if (weekdayCache?.locale === currentLocale) return weekdayCache.days;
+  let firstDay = 1;
+  try {
+    const locale = new Intl.Locale(currentLocale);
+    firstDay = (locale.getWeekInfo?.() ?? locale.weekInfo)?.firstDay || 1;
+  } catch { /* Monday */ }
+  const short = new Intl.DateTimeFormat(currentLocale, { weekday: 'short', timeZone: 'UTC' });
+  const long = new Intl.DateTimeFormat(currentLocale, { weekday: 'long', timeZone: 'UTC' });
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const day = (firstDay + index) % 7;
+    const date = new Date(Date.UTC(2024, 0, 7 + day)); // 7 January 2024 was a Sunday.
+    const name = short.format(date).replace('.', '');
+    return { day, short: name.charAt(0).toLocaleUpperCase(currentLocale) + name.slice(1, 2), long: long.format(date) };
+  });
+  weekdayCache = { locale: currentLocale, days };
+  return days;
+}
+
 function createEditControls(zone, index) {
   const controls = document.createElement('div');
   controls.className = `edit-controls${editMode ? '' : ' hidden'}`;
 
-  const button = (label, text, handler, disabled = false) => {
+  const cityNames = zone.cities.map(getLocalizedCityName).join(', ');
+  const button = (action, label, handler, disabled = false) => {
     const element = document.createElement('button');
-    element.type = 'button'; element.textContent = text; element.title = label;
+    element.type = 'button'; element.title = label; element.dataset.action = action;
     element.setAttribute('aria-label', label); element.disabled = disabled;
+    element.append(createEditIcon(action) || t('groupCityShort'));
     element.addEventListener('click', handler); return element;
   };
   controls.append(
-    button(t('moveLeft'), '←', () => moveZone(zone.tz, -1), index === 0),
-    button(t('moveRight'), '→', () => moveZone(zone.tz, 1), index === config.zones.length - 1),
+    button('move-left', t('moveLeft'), () => moveZone(zone.tz, -1, '[data-action="move-left"]'), index === 0),
+    button('move-right', t('moveRight'), () => moveZone(zone.tz, 1, '[data-action="move-right"]'), index === config.zones.length - 1),
   );
   if (config.home?.tz !== zone.tz) {
     controls.append(
-      button(t('setAsHome'), '⌂', () => setHome(zone.cities[0].city, zone.cities[0].country, zone.tz, true)),
-      button(t('removeTimezone'), '×', () => removeZone(zone.tz)),
+      button('home', t('setAsHome'), () => setHome(zone.cities[0].city, zone.cities[0].country, zone.tz, true)),
+      button('remove', t('removeNamedTimezone', cityNames), () => removeZone(zone.tz)),
     );
   }
-  controls.append(button(t('groupCity'), t('groupCityShort'), event => openSearch('group', event.currentTarget, zone.tz)));
+  controls.append(button('group', t('groupCity'), event => openSearch('group', event.currentTarget, zone.tz)));
 
-  const hours = document.createElement('label');
+  const hours = document.createElement('div');
   hours.className = 'hours-editor';
+  hours.setAttribute('role', 'group');
+  hours.setAttribute('aria-label', `${t('hoursShort')} — ${cityNames}`);
+  const toggle = document.createElement('label');
+  toggle.className = 'hours-toggle';
   const enabled = document.createElement('input');
   enabled.type = 'checkbox'; enabled.checked = zone.workingHours.enabled;
   enabled.setAttribute('aria-label', t('includeWorkingHours'));
+  const label = document.createElement('span'); label.textContent = t('hoursShort');
+  toggle.append(enabled, label);
   const start = document.createElement('input');
   start.type = 'time'; start.value = formatInputTime(zone.workingHours.start);
   start.setAttribute('aria-label', t('workingDayStarts'));
   const end = document.createElement('input');
   end.type = 'time'; end.value = formatInputTime(zone.workingHours.end);
   end.setAttribute('aria-label', t('workingDayEnds'));
+  const range = document.createElement('span');
+  range.className = 'hours-range';
+  range.append(start, document.createTextNode('–'), end);
+
+  const dayPicker = document.createElement('div');
+  dayPicker.className = 'day-picker';
+  dayPicker.setAttribute('role', 'group');
+  dayPicker.setAttribute('aria-label', `${t('workingDays')} — ${cityNames}`);
+  // saveConfig() replaces zone objects, so always update the live one.
+  const liveZone = () => config.zones.find(item => item.tz === zone.tz);
+  const dayChips = getWeekdays().map(({ day, short, long }) => {
+    const chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'day-chip'; chip.textContent = short; chip.title = long;
+    chip.setAttribute('aria-label', long);
+    chip.setAttribute('aria-pressed', String(zone.workingHours.days.includes(day)));
+    chip.addEventListener('click', () => {
+      const current = liveZone();
+      if (!current) return;
+      const days = new Set(current.workingHours.days);
+      if (days.has(day)) {
+        if (days.size === 1) return; // keep at least one working day
+        days.delete(day);
+      } else days.add(day);
+      current.workingHours = { ...current.workingHours, days: [...days].sort((a, b) => a - b) };
+      chip.setAttribute('aria-pressed', String(days.has(day)));
+      saveConfig(); updateDisplay();
+    });
+    return chip;
+  });
+  dayPicker.append(...dayChips);
+
+  // Hours and days only matter while the clock takes part in availability.
+  const setScheduleDisabled = disabled => { for (const control of [start, end, ...dayChips]) control.disabled = disabled; };
+  setScheduleDisabled(!zone.workingHours.enabled);
   const update = () => {
-    zone.workingHours = { enabled: enabled.checked, start: parseInputTime(start.value), end: parseInputTime(end.value) };
+    const current = liveZone();
+    if (!current) return;
+    if (!start.value || !end.value) {
+      start.value = formatInputTime(current.workingHours.start); end.value = formatInputTime(current.workingHours.end);
+      return;
+    }
+    current.workingHours = { ...current.workingHours, enabled: enabled.checked, start: parseInputTime(start.value), end: parseInputTime(end.value) };
+    setScheduleDisabled(!enabled.checked);
     saveConfig(); updateDisplay();
   };
   enabled.addEventListener('change', update); start.addEventListener('change', update); end.addEventListener('change', update);
-  const label = document.createElement('span'); label.textContent = t('hoursShort');
-  hours.append(enabled, label, start, document.createTextNode('–'), end);
+  hours.append(toggle, range, dayPicker);
   controls.append(hours);
   return controls;
 }
@@ -405,7 +527,7 @@ function updateDisplay() {
   const count = columnElements.length;
   const canvasWidth = calculateLayoutWidth(innerWidth, count);
   const canvasHeight = innerHeight;
-  const dpr = devicePixelRatio || 1;
+  const dpr = Math.min(devicePixelRatio || 1, MAX_CANVAS_PIXEL_RATIO);
   const columnWidth = canvasWidth / count;
   $columns.style.width = `${canvasWidth}px`;
   $canvas.style.width = `${canvasWidth}px`; $canvas.style.height = `${canvasHeight}px`;
@@ -422,7 +544,8 @@ function updateDisplay() {
   }
 
   const canvasKey = `${Math.floor(date.getTime() / (config.atmosphericMotion && viewedOffsetMinutes === 0 ? 5000 : 60000))}:${canvasWidth}:${canvasHeight}:${dpr}:${config.visualTheme}`;
-  if (canvasKey !== lastCanvasKey) {
+  // A zero-height viewport (background or minimized tab) makes drawImage throw; repaint on resize.
+  if (canvasKey !== lastCanvasKey && canvasHeight > 0) {
     lastCanvasKey = canvasKey;
     const backingWidth = Math.round(canvasWidth * dpr), backingHeight = Math.round(canvasHeight * dpr);
     if ($canvas.width !== backingWidth) $canvas.width = backingWidth;
@@ -449,6 +572,7 @@ function updateDisplay() {
   columnElements.forEach((column, index) => {
     const timeZone = column.dataset.tz, time = times[index], color = colors[index];
     const textColor = getTextColor(color.top, color.bottom); column.style.color = textColor;
+    column.dataset.tone = textColor === 'rgb(0, 0, 0)' ? 'light' : 'dark';
     const timeElement = column.querySelector('.time-display'); timeElement.style.fontSize = `${timeSize}px`;
     const hour = config.use24h ? String(time.hour24).padStart(2, '0') : time.hour12;
     const timeParts = [document.createTextNode(`${hour}:${time.minute}`)];
@@ -472,28 +596,104 @@ function updateDisplay() {
     ].filter(Boolean).join('\n');
 
     const zone = config.zones.find(item => item.tz === timeZone);
-    const available = isMinuteWithinHours(getLocalMinuteOfDay(timeZone, date), zone.workingHours);
+    const available = isZoneAvailableAt(zone, date);
     column.classList.toggle('is-available', available);
   });
 
   document.body.classList.toggle('density-compact', config.infoDensity === 'compact');
   updatePlanner(date);
+  updateScrollHints();
 }
 
 function updatePlanner(date) {
   if (!config.home) return;
-  $plannerTime.textContent = formatClock(date, config.home.tz, true);
-  if (!config.availabilityEnabled) {
-    $availabilitySummary.textContent = t('enableAvailabilityHint'); return;
-  }
+  const now = new Date();
+  const homeTime = formatClock(date, config.home.tz, true);
+  const ahead = viewedOffsetMinutes ? formatRelativeOffset(Math.round((date - now) / 60000), 0) : '';
+  $plannerTime.textContent = homeTime;
+  $plannerOffset.textContent = ahead;
+  $timeSlider.setAttribute('aria-valuetext', ahead ? `${homeTime} (${ahead})` : `${t('now')}, ${homeTime}`);
+  renderTimelineDays();
+  updateAvailabilitySummary(date, now);
+}
+
+// Rebuilt only when it changes, so a focused overlap button survives ticks.
+function setAvailabilitySummary(text, jumpTo = null) {
+  const key = `${text}|${jumpTo?.getTime() ?? ''}`;
+  if (key === summaryKey) return;
+  summaryKey = key;
+  if (!jumpTo) { $availabilitySummary.textContent = text; return; }
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'summary-link'; button.textContent = text; button.title = t('jumpToOverlap');
+  button.addEventListener('click', () => { jumpToTime(jumpTo); $timeSlider.focus(); });
+  $availabilitySummary.replaceChildren(button);
+}
+
+function updateAvailabilitySummary(date, now) {
+  if (!config.availabilityEnabled) { setAvailabilitySummary(t('enableAvailabilityHint')); return; }
   if (areZonesAvailable(config.zones, date)) {
-    $availabilitySummary.textContent = t('everyoneAvailableNow'); return;
+    setAvailabilitySummary(t(viewedOffsetMinutes ? 'everyoneAvailableAtTime' : 'everyoneAvailableNow')); return;
   }
-  const window = findAvailabilityWindows(config.zones, new Date())[0];
-  if (!window) { $availabilitySummary.textContent = t('noOverlapNext48'); return; }
-  const zoneLabels = [config.home.tz, ...config.zones.map(zone => zone.tz).filter(tz => tz !== config.home.tz)].slice(0, 2)
-    .map(timeZone => `${formatClock(window.start, timeZone)}–${formatClock(window.end, timeZone)}`);
-  $availabilitySummary.textContent = t('bestOverlap', zoneLabels.join(' / '));
+  const windows = findAvailabilityWindows(config.zones, now);
+  if (!windows.length) { setAvailabilitySummary(t('noOverlapNext48')); return; }
+  const next = windows.find(window => window.start > date);
+  if (!next) { setAvailabilitySummary(t('noLaterOverlap')); return; }
+  const others = config.zones.filter(zone => zone.tz !== config.home.tz).slice(0, 1);
+  const labels = [{ tz: config.home.tz, city: config.home }, ...others.map(zone => ({ tz: zone.tz, city: zone.cities[0] }))]
+    .map(({ tz, city }) => {
+      const day = isSameZonedDay(next.start, now, tz) ? '' : `${formatWeekday(next.start, tz)} `;
+      return `${getLocalizedCityName(city)} ${day}${formatClock(next.start, tz)}–${formatClock(next.end, tz)}`;
+    });
+  setAvailabilitySummary(t('bestOverlap', labels.join(' · ')), next.start);
+}
+
+function isSameZonedDay(a, b, timeZone) {
+  const [left, right] = [getZonedDateParts(timeZone, a), getZonedDateParts(timeZone, b)];
+  return left.year === right.year && left.month === right.month && left.day === right.day;
+}
+
+const weekdayFormatterCache = new Map();
+function formatWeekday(date, timeZone) {
+  const key = `${currentLocale}:${timeZone}`;
+  if (!weekdayFormatterCache.has(key)) weekdayFormatterCache.set(key, new Intl.DateTimeFormat(currentLocale, { timeZone, weekday: 'short' }));
+  return weekdayFormatterCache.get(key).format(date);
+}
+
+// Day markers sit at home-timezone midnights; the track spans the thumb's
+// travel, which is inset by half its 16px width at each end.
+function renderTimelineDays() {
+  const origin = viewedOffsetMinutes ? planningOrigin : floorToStep(Date.now());
+  const key = `${config.home.tz}:${origin}:${currentLocale}`;
+  if (key === timelineKey) return;
+  timelineKey = key;
+  const mark = (fraction, label, className) => {
+    const element = document.createElement('span');
+    element.className = `timeline-mark ${className}`;
+    element.style.setProperty('--position', String(fraction));
+    element.textContent = label;
+    return element;
+  };
+  const days = getDayStarts(config.home.tz, origin, PLANNER_RANGE_MINUTES)
+    .map(({ minutes, at }) => ({ fraction: minutes / PLANNER_RANGE_MINUTES, label: formatWeekday(at, config.home.tz) }));
+  const marks = days.map(({ fraction, label }) => mark(fraction, label, fraction > 0.92 ? 'is-day is-end' : 'is-day'));
+  if (!days.length || days[0].fraction > 0.08) marks.unshift(mark(0, t('now'), 'is-now'));
+  $timelineDays.replaceChildren(...marks);
+}
+
+function setViewedOffset(minutes) {
+  const next = Math.max(0, Math.min(PLANNER_RANGE_MINUTES, minutes));
+  const wasLive = !viewedOffsetMinutes;
+  if (wasLive && next) planningOrigin = floorToStep(Date.now());
+  viewedOffsetMinutes = next;
+  $timeSlider.value = String(next);
+  lastCanvasKey = '';
+  updateDisplay();
+  if (wasLive !== !next) startTimer();
+}
+
+function jumpToTime(date) {
+  if (!viewedOffsetMinutes) planningOrigin = floorToStep(Date.now());
+  setViewedOffset(Math.round((date - planningOrigin) / 60000));
 }
 
 // Zone management
@@ -506,7 +706,7 @@ function addZone(city, country, timeZone) {
     if (existing.cities.length >= 3) { showToast(t('maxCitiesPerTimezone')); return false; }
     existing.cities.push({ city, country });
   } else {
-    if (config.zones.length >= 10) { showToast(t('maxTimezones')); return false; }
+    if (config.zones.length >= MAX_TIMEZONES) { showToast(t('maxTimezones')); return false; }
     config.zones = addZoneByUtcOffset(config.zones, {
       tz: timeZone,
       cities: [{ city, country }],
@@ -516,32 +716,50 @@ function addZone(city, country, timeZone) {
   saveConfig(); renderColumns(); return true;
 }
 
+// Re-rendering replaces every column, so restore focus explicitly.
+function focusColumn(timeZone, selector = null) {
+  const column = $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`);
+  const target = selector ? column?.querySelector(selector) : null;
+  (target && !target.disabled ? target : column?.querySelector('.column-content'))?.focus();
+}
+
 function removeZone(timeZone) {
   if (config.home?.tz === timeZone) return;
   const index = config.zones.findIndex(zone => zone.tz === timeZone);
   if (index < 0) return;
   const [removed] = config.zones.splice(index, 1);
   saveConfig(); renderColumns();
+  const neighbor = config.zones[Math.min(index, config.zones.length - 1)];
+  if (neighbor) focusColumn(neighbor.tz, '[data-action="remove"]');
   showToast(t('timezoneRemoved', removed.cities.map(getLocalizedCityName).join(', ')), {
-    label: t('undo'), run: () => { config.zones.splice(index, 0, removed); saveConfig(); renderColumns(); },
+    label: t('undo'),
+    run: () => {
+      if (config.zones.some(zone => zone.tz === removed.tz)) return;
+      if (config.zones.length >= MAX_TIMEZONES) { showToast(t('maxTimezones')); return; }
+      config.zones.splice(Math.min(index, config.zones.length), 0, removed); saveConfig(); renderColumns();
+      focusColumn(removed.tz, '[data-action="remove"]');
+    },
   });
 }
 
 function setHome(city, country, timeZone, announce = false) {
-  config.home = { city, country, tz: timeZone };
   const existing = config.zones.find(zone => zone.tz === timeZone);
-  if (!existing) config.zones.push({ tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
+  if (!existing && config.zones.length >= MAX_TIMEZONES) { showToast(t('maxTimezones')); return false; }
+  config.home = { city, country, tz: timeZone };
+  if (!existing) config.zones = addZoneByUtcOffset(config.zones, { tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
   else if (!existing.cities.some(item => item.city === city && item.country === country)) existing.cities.unshift({ city, country });
   saveConfig(); renderColumns();
-  if (announce) showToast(t('homeChanged', getLocalizedCityName({ city, country })));
+  if (announce) { showToast(t('homeChanged', getLocalizedCityName({ city, country }))); focusColumn(timeZone, '[data-action="group"]'); }
+  return true;
 }
 
-function moveZone(timeZone, direction) {
+function moveZone(timeZone, direction, focusSelector = null) {
   const index = config.zones.findIndex(zone => zone.tz === timeZone), target = index + direction;
   if (index < 0 || target < 0 || target >= config.zones.length) return;
   [config.zones[index], config.zones[target]] = [config.zones[target], config.zones[index]];
   saveConfig(); renderColumns();
-  $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`)?.focus();
+  if (focusSelector) focusColumn(timeZone, focusSelector);
+  else $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`)?.focus();
 }
 
 function reorderZone(sourceTimeZone, targetTimeZone) {
@@ -563,50 +781,103 @@ function addDefaultZones() {
 }
 
 // Storage, presets, and backup
-function chromeStorage(area, method, ...args) {
-  return new Promise(resolve => {
-    if (!hasChromeStorage() || !chrome.storage?.[area]) { resolve(undefined); return; }
-    chrome.storage[area][method](...args, result => resolve(result));
+function chromeStorageArea(area) {
+  const storage = chrome.storage?.[area];
+  if (!storage) return null;
+  const call = (method, argument) => new Promise((resolve, reject) => {
+    storage[method](argument, result => {
+      const error = chrome.runtime?.lastError;
+      if (error) reject(new Error(error.message)); else resolve(result);
+    });
   });
+  return { get: keys => call('get', keys), set: items => call('set', items), remove: keys => call('remove', keys) };
+}
+
+// HTTP previews use origin-scoped localStorage with the same area shape.
+const localStorageArea = {
+  async get(keys) {
+    const items = {};
+    for (const key of keys) {
+      try {
+        const value = localStorage.getItem(key);
+        if (value !== null) items[key] = JSON.parse(value);
+      } catch { /* ignore unreadable preview data */ }
+    }
+    return items;
+  },
+  async set(items) { for (const [key, value] of Object.entries(items)) localStorage.setItem(key, JSON.stringify(value)); },
+  async remove(keys) { for (const key of keys) localStorage.removeItem(key); },
+};
+
+let lastSyncErrorToast = 0;
+const store = createConfigStore(hasChromeStorage()
+  ? { local: chromeStorageArea('local'), sync: chromeStorageArea('sync'), onSyncError: reportSyncError }
+  : { local: localStorageArea });
+
+function reportSyncError(error) {
+  console.warn('Meridian could not write to Chrome Sync.', error);
+  if (Date.now() - lastSyncErrorToast < 60000) return;
+  lastSyncErrorToast = Date.now();
+  showToast(t('syncSaveFailed'));
 }
 
 async function loadConfig() {
-  if (hasChromeStorage()) {
-    const local = await chromeStorage('local', 'get', ['meridian_config', 'meridian_storage_mode']);
-    const mode = local?.meridian_storage_mode || local?.meridian_config?.storageMode || 'local';
-    if (mode === 'sync' && chrome.storage.sync) {
-      const synced = await chromeStorage('sync', 'get', ['meridian_config']);
-      config = normalizeConfig(synced?.meridian_config || local?.meridian_config || {});
-      config.storageMode = 'sync';
-    } else config = normalizeConfig(local?.meridian_config || {});
-  } else {
-    try { config = normalizeConfig(JSON.parse(localStorage.getItem('meridian_config') || '{}')); }
-    catch { config = normalizeConfig({}); }
+  try {
+    const result = await store.load();
+    config = result.config;
+    return result;
+  } catch (error) {
+    console.error('Meridian could not load settings.', error);
+    config = normalizeConfig({});
+    return { config, adopted: false };
   }
 }
 
 function saveConfig() {
   config = normalizeConfig(config);
-  if (hasChromeStorage()) {
-    chrome.storage.local.set({ meridian_storage_mode: config.storageMode });
-    if (config.storageMode === 'sync' && chrome.storage.sync) chrome.storage.sync.set({ meridian_config: config });
-    else chrome.storage.local.set({ meridian_config: config });
-  } else localStorage.setItem('meridian_config', JSON.stringify(config));
+  store.save(config).catch(error => console.error('Meridian could not save settings.', error));
   syncSettingsControls();
 }
 
 async function changeStorageMode(mode) {
-  config.storageMode = mode === 'sync' ? 'sync' : 'local';
-  if (hasChromeStorage()) {
-    if (config.storageMode === 'sync' && chrome.storage.sync) {
-      await chromeStorage('sync', 'set', { meridian_config: config });
-      await chromeStorage('local', 'set', { meridian_storage_mode: 'sync' });
-    } else {
-      await chromeStorage('local', 'set', { meridian_config: config, meridian_storage_mode: 'local' });
-      if (chrome.storage.sync) await chromeStorage('sync', 'remove', ['meridian_config']);
+  try {
+    const result = await store.setMode(config, mode);
+    config = result.config;
+    renderColumns(); syncSettingsControls();
+    if (result.adopted) {
+      showToast(t('syncAdopted'), {
+        label: t('keepThisDevice'),
+        run: () => { config = { ...result.previous, storageMode: 'sync' }; saveConfig(); store.flush(); renderColumns(); },
+      });
+    } else showToast(t(config.storageMode === 'sync' ? 'syncEnabled' : 'localStorageEnabled'));
+  } catch (error) {
+    console.warn('Meridian could not change storage mode.', error);
+    syncSettingsControls();
+    showToast(t('syncUnavailable'));
+  }
+}
+
+// Other tabs (and, in sync mode, other devices) save the same configuration.
+// Reload it so a stale tab never writes its old copy over newer changes.
+let externalReloadTimer = null;
+function scheduleExternalReload() {
+  clearTimeout(externalReloadTimer);
+  externalReloadTimer = setTimeout(async () => {
+    let next;
+    try { ({ config: next } = await store.load({ repair: false })); } catch { return; }
+    if (!next.home || !next.onboardingComplete || JSON.stringify(next) === JSON.stringify(config)) return;
+    config = next;
+    if (!$firstRunModal.classList.contains('hidden')) {
+      $firstRunModal.classList.add('hidden'); setPageInert(false); startTimer();
     }
-  } else localStorage.setItem('meridian_config', JSON.stringify(config));
-  showToast(t(config.storageMode === 'sync' ? 'syncEnabled' : 'localStorageEnabled'));
+    renderColumns(); syncSettingsControls();
+  }, 150);
+}
+
+if (hasChromeStorage()) {
+  chrome.storage.onChanged.addListener(changes => { if (store.isExternalChange(changes)) scheduleExternalReload(); });
+} else {
+  addEventListener('storage', event => { if (event.key === CONFIG_STORAGE_KEY) scheduleExternalReload(); });
 }
 
 function renderPresets() {
@@ -625,7 +896,7 @@ function savePreset() {
   if (!name) { $presetName.focus(); showToast(t('enterPresetName')); return; }
   let preset = config.presets.find(item => item.id === config.activePresetId && item.name === name);
   if (!preset) {
-    if (config.presets.length >= 12) { showToast(t('maxPresets')); return; }
+    if (config.presets.length >= MAX_PRESETS) { showToast(t('maxPresets')); return; }
     preset = { id: crypto.randomUUID ? crypto.randomUUID() : `preset-${Date.now()}` };
     config.presets.push(preset);
   }
@@ -634,18 +905,38 @@ function savePreset() {
   saveConfig(); renderPresets(); showToast(t('presetSaved', name));
 }
 
+// Loading a preset replaces the clocks on screen, so Undo restores them.
 function activatePreset(id) {
   if (!id) { config.activePresetId = null; saveConfig(); renderPresets(); return; }
   const preset = config.presets.find(item => item.id === id); if (!preset) return;
+  const previous = config;
   const storageMode = config.storageMode, presets = config.presets;
   config = normalizeConfig({ ...createPresetSnapshot(preset), presets, activePresetId: id, storageMode, onboardingComplete: true });
-  saveConfig(); renderColumns(); syncSettingsControls(); showToast(t('presetLoaded', preset.name));
+  saveConfig(); renderColumns(); syncSettingsControls();
+  showToast(t('presetLoaded', preset.name), {
+    label: t('undo'),
+    run: () => {
+      config = normalizeConfig({ ...previous, presets: config.presets, storageMode: config.storageMode });
+      saveConfig(); renderColumns(); syncSettingsControls();
+    },
+  });
 }
 
 function deletePreset() {
-  const preset = config.presets.find(item => item.id === config.activePresetId); if (!preset) return;
+  const index = config.presets.findIndex(item => item.id === config.activePresetId); if (index < 0) return;
+  const preset = config.presets[index];
   config.presets = config.presets.filter(item => item.id !== preset.id); config.activePresetId = null;
-  saveConfig(); renderPresets(); showToast(t('presetDeleted', preset.name));
+  saveConfig(); renderPresets();
+  showToast(t('presetDeleted', preset.name), {
+    label: t('undo'),
+    run: () => {
+      if (config.presets.some(item => item.id === preset.id)) return;
+      if (config.presets.length >= MAX_PRESETS) { showToast(t('maxPresets')); return; }
+      config.presets.splice(Math.min(index, config.presets.length), 0, preset);
+      config.activePresetId = preset.id;
+      saveConfig(); renderPresets();
+    },
+  });
 }
 
 function exportBackup() {
@@ -659,7 +950,7 @@ function exportBackup() {
 async function importBackup(file) {
   try {
     const payload = JSON.parse(await file.text());
-    config = parseBackup(payload);
+    config = parseBackup(payload, { storageMode: config.storageMode });
     saveConfig(); renderColumns(); syncSettingsControls(); closeSettings(); showToast(t('backupImported'));
   } catch { showToast(t('invalidBackup')); }
 }
@@ -686,45 +977,68 @@ function getCountryName(country) {
   return countryDisplayNames?.of(country) || country;
 }
 
-function getLocalizedTimezoneSearchText(timeZone) {
-  const key = `${currentLocale}:${timeZone}`; if (timezoneSearchCache.has(key)) return timezoneSearchCache.get(key);
-  const names = [];
-  for (const timeZoneName of ['short', 'long', 'shortGeneric', 'longGeneric']) {
-    try {
-      const part = new Intl.DateTimeFormat(currentLocale, { timeZone, timeZoneName }).formatToParts(new Date()).find(item => item.type === 'timeZoneName');
-      if (part?.value) names.push(part.value);
-    } catch { /* generic names are not universal */ }
-  }
-  const value = [...new Set(names)].join(' '); timezoneSearchCache.set(key, value); return value;
+function getLocalizedTimezoneNames(timeZone) {
+  const key = `${currentLocale}:${timeZone}`;
+  if (!timezoneSearchCache.has(key)) timezoneSearchCache.set(key, getTimeZoneSearchNames(timeZone, currentLocale));
+  return timezoneSearchCache.get(key);
 }
 
-function normalizeForSearch(value) {
-  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2019'.,-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+// The index holds every city's normalized names. Localized timezone names
+// take a few hundred milliseconds to build, so the index fills in idle time
+// once search opens and any remainder is finished on the first keystroke.
+const searchIndex = [];
+function indexNextCity() {
+  const city = cities[searchIndex.length];
+  searchIndex.push(createSearchEntry(city, {
+    names: [city.city, getLocalizedCityName(city), ...getLocalizedCityAliases(city)],
+    countries: [getCountryName(city.country)],
+    zoneNames: getLocalizedTimezoneNames(city.tz),
+  }));
+}
+
+let searchIndexWarm = false;
+function warmSearchIndex() {
+  if (searchIndexWarm) return;
+  searchIndexWarm = true;
+  const idle = window.requestIdleCallback || (callback => setTimeout(() => callback({ timeRemaining: () => 8 }), 16));
+  const step = deadline => {
+    while (searchIndex.length < cities.length && deadline.timeRemaining() > 1) indexNextCity();
+    if (searchIndex.length < cities.length) idle(step);
+  };
+  idle(step);
 }
 
 function searchCities(query) {
-  if (!query) return [];
-  const normalized = normalizeForSearch(query), seen = new Set(), starts = [], includes = [];
-  for (const city of cities) {
-    const cityNames = [city.city, getLocalizedCityName(city), ...getLocalizedCityAliases(city)];
-    const text = [...cityNames, city.country, getCountryName(city.country), city.tz, city.tz.replace(/[\/_]/g, ' '), getLocalizedTimezoneSearchText(city.tz)].join(' ');
-    if (!normalizeForSearch(text).includes(normalized)) continue;
-    const key = getCityKey(city.city, city.country); if (seen.has(key)) continue; seen.add(key);
-    (cityNames.some(name => normalizeForSearch(name).startsWith(normalized)) ? starts : includes).push(city);
-  }
-  return [...starts, ...includes].slice(0, 12);
+  while (searchIndex.length < cities.length) indexNextCity();
+  return searchEntries(searchIndex, query);
 }
 
 function renderSearchResults(results, list, onSelect) {
   list.replaceChildren(); searchSelectedIndex = -1;
   const input = list === $homeResults ? $homeSearch : $searchInput;
+  const empty = list === $homeResults ? $homeEmpty : $searchEmpty;
   input.removeAttribute('aria-activedescendant'); input.setAttribute('aria-expanded', String(results.length > 0));
+  empty.textContent = results.length || !input.value.trim() ? '' : t('noSearchResults');
+  const now = new Date();
+  const homeOffset = config.home ? getOffsetMinutes(config.home.tz, now) : null;
   results.forEach((city, index) => {
     const item = document.createElement('li'); item.id = `${list.id}-option-${index}`; item.role = 'option'; item.ariaSelected = 'false';
     const name = document.createElement('span'); name.className = 'city-name'; name.textContent = `${getLocalizedCityName(city)}, ${getCountryName(city.country)}`;
+    const meta = document.createElement('span'); meta.className = 'city-meta';
+    const time = document.createElement('span'); time.className = 'city-time';
+    const relative = homeOffset === null ? '' : formatRelativeOffset(getOffsetMinutes(city.tz, now), homeOffset);
+    time.textContent = relative ? `${formatClock(now, city.tz)} \u00b7 ${relative}` : formatClock(now, city.tz);
     const zone = document.createElement('span'); zone.className = 'city-tz'; zone.textContent = city.tz;
-    item.append(name, zone); item.addEventListener('click', () => onSelect(city)); list.append(item);
+    meta.append(time, zone);
+    item.append(name, meta); item.addEventListener('click', () => onSelect(city)); list.append(item);
   });
+  // Highlight the best match so Enter picks it without arrowing first.
+  if (results.length) navigateResults(list, 'down');
+}
+
+function clearSearchResults(list) {
+  list.replaceChildren();
+  (list === $homeResults ? $homeEmpty : $searchEmpty).textContent = '';
 }
 
 function navigateResults(list, direction) {
@@ -737,7 +1051,13 @@ function navigateResults(list, direction) {
 
 function selectCurrentResult(list) { const items = list.querySelectorAll('li'); items[searchSelectedIndex]?.click(); }
 
-function setPageInert(inert) { $dashboard.inert = inert; $toolbar.inert = inert; }
+function setPageInert(inert) {
+  for (const element of [$dashboard, $toolbar, $planner, $settingsPanel, $scrollLeft, $scrollRight]) element.inert = inert;
+}
+
+function isModalOpen() {
+  return !$searchOverlay.classList.contains('hidden') || !$firstRunModal.classList.contains('hidden');
+}
 
 function openSearch(mode = 'add', returnFocus = document.activeElement, targetTimeZone = null) {
   closeSettings();
@@ -748,22 +1068,46 @@ function openSearch(mode = 'add', returnFocus = document.activeElement, targetTi
         : t('addTimezone');
   $searchInput.placeholder = mode === 'home' ? t('searchYourCity') : t('searchCityOrTimezone');
   $searchMultiFooter.classList.toggle('hidden', mode !== 'onboarding');
-  $searchMultiStatus.textContent = t('timezonesAdded', String(Math.max(0, config.zones.length - 1)));
+  updateMultiAddStatus();
   $searchOverlay.classList.remove('hidden'); setPageInert(true);
-  $searchInput.value = ''; $searchResults.replaceChildren(); $searchInput.ariaExpanded = 'false';
+  $searchInput.value = ''; clearSearchResults($searchResults); $searchInput.ariaExpanded = 'false';
   setTimeout(() => $searchInput.focus(), 40);
+  warmSearchIndex();
+}
+
+function updateMultiAddStatus() {
+  const count = Math.max(0, config.zones.length - 1);
+  let key = 'timezonesAdded';
+  try { if (new Intl.PluralRules(currentLocale).select(count) === 'one') key = 'timezoneAddedCount'; } catch { /* keep plural */ }
+  $searchMultiStatus.textContent = t(key, String(count));
 }
 
 function closeSearch() {
-  $searchOverlay.classList.add('hidden'); setPageInert(false); $searchInput.value = ''; $searchResults.replaceChildren();
+  $searchOverlay.classList.add('hidden'); setPageInert(false); $searchInput.value = ''; clearSearchResults($searchResults);
   $searchInput.ariaExpanded = 'false'; $searchInput.removeAttribute('aria-activedescendant');
-  searchReturnFocus?.focus?.(); searchReturnFocus = null;
+  // Adding a city re-renders the columns, detaching the button that opened search.
+  const fallback = searchTargetTimeZone
+    ? $columns.querySelector(`[data-tz="${CSS.escape(searchTargetTimeZone)}"] [data-action="group"]`)
+    : $addBtn;
+  (searchReturnFocus?.isConnected ? searchReturnFocus : fallback)?.focus?.();
+  searchReturnFocus = null;
   searchTargetTimeZone = null;
 }
 
 // Onboarding
 function showGoalStep() {
+  if (config.home) $homeSetLabel.textContent = t('homeSetTo', getLocalizedCityName(config.home));
   $onboardingHomeStep.classList.add('hidden'); $onboardingGoalStep.classList.remove('hidden'); byId('goal-people').focus();
+}
+
+// Before onboarding finishes the only clock is the chosen home, so going
+// back clears it rather than leaving the first choice behind as a column.
+function returnToHomeStep() {
+  config.home = null; config.zones = [];
+  saveConfig(); renderColumns();
+  $onboardingGoalStep.classList.add('hidden'); $onboardingHomeStep.classList.remove('hidden');
+  $homeSearch.value = ''; clearSearchResults($homeResults); $homeSearch.ariaExpanded = 'false';
+  $homeSearch.focus();
 }
 
 function finishOnboarding(goal) {
@@ -780,13 +1124,14 @@ function showFirstRun() {
   $homeDetected.replaceChildren();
   if (detected) {
     const button = document.createElement('button'); button.type = 'button';
-    button.textContent = t('useDetectedLocation', [getLocalizedCityName(detected), getCountryName(detected.country), systemTimeZone]);
+    button.textContent = t('useDetectedLocation', [getLocalizedCityName(detected), getCountryName(detected.country), detected.tz]);
     button.addEventListener('click', () => { setHome(detected.city, detected.country, detected.tz); showGoalStep(); });
     $homeDetected.append(button);
   } else {
     const message = document.createElement('p'); message.className = 'detected-message'; message.textContent = t('detectedSearchPrompt', systemTimeZone); $homeDetected.append(message);
   }
   setTimeout(() => $homeSearch.focus(), 80);
+  warmSearchIndex();
 }
 
 // Planner, editing, settings
@@ -795,13 +1140,22 @@ function togglePlanner(force) {
   if (planningOpen && editMode) {
     editMode = false; $editBtn.ariaPressed = 'false'; renderColumns();
   }
+  // Time travel is only shown while the planner is open; closing it by any
+  // route must return every clock to the live time.
+  if (!planningOpen && viewedOffsetMinutes) {
+    viewedOffsetMinutes = 0; $timeSlider.value = '0'; lastCanvasKey = '';
+  }
+  if (planningOpen) planningOrigin = floorToStep(Date.now());
+  const hadFocus = $planner.contains(document.activeElement);
   $planner.classList.toggle('hidden', !planningOpen); document.body.classList.toggle('planning-mode', planningOpen);
   $timeTravelBtn.ariaExpanded = String(planningOpen);
-  if (planningOpen) { updateDisplay(); $timeSlider.focus(); }
+  updateDisplay(); startTimer();
+  if (planningOpen) $timeSlider.focus();
+  else if (hadFocus) $timeTravelBtn.focus();
 }
 
 function returnToNow(close = false) {
-  viewedOffsetMinutes = 0; $timeSlider.value = '0'; lastCanvasKey = ''; updateDisplay();
+  viewedOffsetMinutes = 0; $timeSlider.value = '0'; lastCanvasKey = ''; updateDisplay(); startTimer();
   if (close) togglePlanner(false);
 }
 
@@ -812,8 +1166,10 @@ function toggleEdit(force) {
   $editBtn.ariaPressed = String(editMode); renderColumns();
 }
 
-function toggleAvailability() {
-  config.availabilityEnabled = $availabilityToggle.checked;
+// The planner and Settings both expose this switch; syncSettingsControls()
+// keeps them in step.
+function setAvailability(enabled) {
+  config.availabilityEnabled = enabled;
   document.body.classList.toggle('availability-mode', config.availabilityEnabled);
   saveConfig(); updateDisplay();
 }
@@ -830,15 +1186,30 @@ function closeSettings({ restoreFocus = false } = {}) {
 function syncSettingsControls() {
   $toggle24h.checked = config.use24h; $toggleSeconds.checked = config.showSeconds; $toggleMotion.checked = config.atmosphericMotion;
   $densitySelect.value = config.infoDensity; $themeSelect.value = config.visualTheme; $storageSelect.value = config.storageMode;
-  $availabilityToggle.checked = config.availabilityEnabled;
+  $availabilityToggle.checked = config.availabilityEnabled; $settingsAvailability.checked = config.availabilityEnabled;
   document.body.classList.toggle('availability-mode', config.availabilityEnabled);
   renderPresets();
+}
+
+// Edge fades and arrow buttons appear only in a direction with more clocks.
+let scrollHintFrame = null;
+function updateScrollHints() {
+  const maxScroll = $dashboard.scrollWidth - $dashboard.clientWidth;
+  document.body.classList.toggle('can-scroll-left', $dashboard.scrollLeft > 1);
+  document.body.classList.toggle('can-scroll-right', $dashboard.scrollLeft < maxScroll - 1);
+}
+
+function scrollColumns(direction) {
+  const column = $columns.querySelector('.tz-column');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $dashboard.scrollBy({ left: direction * (column?.offsetWidth || innerWidth / 2), behavior: reduceMotion ? 'auto' : 'smooth' });
 }
 
 // Events
 $addBtn.addEventListener('click', () => openSearch('add', $addBtn));
 $timeTravelBtn.addEventListener('click', () => togglePlanner());
-$availabilityToggle.addEventListener('change', toggleAvailability);
+$availabilityToggle.addEventListener('change', () => setAvailability($availabilityToggle.checked));
+$settingsAvailability.addEventListener('change', () => setAvailability($settingsAvailability.checked));
 $editBtn.addEventListener('click', () => toggleEdit());
 $settingsBtn.addEventListener('click', event => { event.stopPropagation(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); });
 byId('settings-close').addEventListener('click', () => closeSettings({ restoreFocus: true }));
@@ -848,29 +1219,35 @@ byId('now-btn').addEventListener('click', () => returnToNow());
 $searchOverlay.addEventListener('click', event => { if (event.target === $searchOverlay && searchMode !== 'onboarding') closeSearch(); });
 document.addEventListener('click', event => { if (!$settingsPanel.contains(event.target) && event.target !== $settingsBtn) closeSettings(); });
 
-$timeSlider.addEventListener('input', () => { viewedOffsetMinutes = Number($timeSlider.value); lastCanvasKey = ''; updateDisplay(); });
+$timeSlider.addEventListener('input', () => setViewedOffset(Number($timeSlider.value)));
 $timeSlider.addEventListener('keydown', event => {
   const increments = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 60, PageDown: -60 };
-  if (increments[event.key]) {
-    event.preventDefault(); viewedOffsetMinutes = Math.max(0, Math.min(2880, viewedOffsetMinutes + increments[event.key]));
-    $timeSlider.value = String(viewedOffsetMinutes); updateDisplay();
-  }
+  if (increments[event.key]) { event.preventDefault(); setViewedOffset(viewedOffsetMinutes + increments[event.key]); }
 });
+
+byId('goal-back').addEventListener('click', returnToHomeStep);
+$scrollLeft.addEventListener('click', () => scrollColumns(-1));
+$scrollRight.addEventListener('click', () => scrollColumns(1));
+$dashboard.addEventListener('scroll', () => {
+  if (scrollHintFrame) return;
+  scrollHintFrame = requestAnimationFrame(() => { scrollHintFrame = null; updateScrollHints(); });
+}, { passive: true });
 
 $searchInput.addEventListener('input', () => {
   const results = searchCities($searchInput.value).filter(city => searchMode !== 'group' || city.tz === searchTargetTimeZone);
   renderSearchResults(results, $searchResults, city => {
-  if (searchMode === 'home') { setHome(city.city, city.country, city.tz, true); closeSearch(); return; }
+  if (searchMode === 'home') { if (setHome(city.city, city.country, city.tz, true)) closeSearch(); return; }
   const added = addZone(city.city, city.country, city.tz);
   if (searchMode === 'onboarding') {
     if (added) showToast(t('timezoneAdded', getLocalizedCityName(city)));
-    $searchInput.value = ''; $searchResults.replaceChildren(); $searchMultiStatus.textContent = t('timezonesAdded', String(Math.max(0, config.zones.length - 1))); $searchInput.focus();
+    $searchInput.value = ''; clearSearchResults($searchResults); updateMultiAddStatus(); $searchInput.focus();
   } else closeSearch();
   });
 });
 
 function searchKeydown(event, list, close) {
-  if (event.key === 'Escape' && close) close();
+  // Handle Escape here only; letting it bubble would also reset time travel or edit mode.
+  if (event.key === 'Escape') { event.preventDefault(); close?.(); }
   else if (event.key === 'ArrowDown') { event.preventDefault(); navigateResults(list, 'down'); }
   else if (event.key === 'ArrowUp') { event.preventDefault(); navigateResults(list, 'up'); }
   else if (event.key === 'Enter') { event.preventDefault(); selectCurrentResult(list); }
@@ -898,45 +1275,60 @@ byId('export-btn').addEventListener('click', exportBackup);
 byId('import-btn').addEventListener('click', () => byId('import-file').click());
 byId('import-file').addEventListener('change', event => { if (event.target.files[0]) importBackup(event.target.files[0]); event.target.value = ''; });
 
+// Shortcuts stay active on buttons, checkboxes, and the time slider, but not
+// where letters are typed.
+const TEXT_ENTRY_TYPES = new Set(['text', 'search', 'email', 'number', 'password', 'tel', 'url', 'time', 'date', 'datetime-local', 'month', 'week']);
+function isTextEntry(element) {
+  if (!element) return false;
+  if (element.isContentEditable || element.tagName === 'TEXTAREA' || element.tagName === 'SELECT') return true;
+  return element.tagName === 'INPUT' && TEXT_ENTRY_TYPES.has(element.type);
+}
+
 document.addEventListener('keydown', event => {
   if (event.defaultPrevented) return;
-  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable;
   if (event.key === 'Escape') {
     if (!$searchOverlay.classList.contains('hidden')) { if (searchMode !== 'onboarding') closeSearch(); return; }
+    if (!$firstRunModal.classList.contains('hidden')) return;
     if (!$settingsPanel.classList.contains('hidden')) { closeSettings({ restoreFocus: true }); return; }
     if (viewedOffsetMinutes) { returnToNow(); return; }
     if (planningOpen) { togglePlanner(false); return; }
     if (editMode) toggleEdit(false);
     return;
   }
-  if (typing || !$firstRunModal.classList.contains('hidden')) return;
+  if (isModalOpen() || isTextEntry(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (editMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && event.target.classList.contains('tz-column')) {
+    event.preventDefault(); moveZone(event.target.dataset.tz, event.key === 'ArrowLeft' ? -1 : 1); return;
+  }
+  if (event.repeat) return;
   if (event.key === '/' || event.key.toLowerCase() === 'a') { event.preventDefault(); openSearch('add'); }
   else if (event.key.toLowerCase() === 't') { event.preventDefault(); togglePlanner(); }
   else if (event.key.toLowerCase() === 'e') { event.preventDefault(); toggleEdit(); }
   else if (event.key === ',') { event.preventDefault(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); }
-  else if (editMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && event.target.classList.contains('tz-column')) {
-    event.preventDefault(); moveZone(event.target.dataset.tz, event.key === 'ArrowLeft' ? -1 : 1);
-  }
 });
 
 // Lifecycle
 function startTimer() {
   if (updateTimer) clearTimeout(updateTimer);
   const interval = config.showSeconds ? 1000 : config.atmosphericMotion && viewedOffsetMinutes === 0 ? 5000 : 60000;
-  updateTimer = setTimeout(() => { updateDisplay(); startTimer(); }, interval - Date.now() % interval + 20);
+  updateTimer = setTimeout(() => { try { updateDisplay(); } finally { startTimer(); } }, interval - Date.now() % interval + 20);
 }
 
 let resizeFrame = null;
 addEventListener('resize', () => { if (resizeFrame) cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { resizeFrame = null; lastCanvasKey = ''; updateDisplay(); }); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { if (updateTimer) clearTimeout(updateTimer); updateTimer = null; }
+  if (document.hidden) { if (updateTimer) clearTimeout(updateTimer); updateTimer = null; store.flush(); }
   else if (config.home) { updateDisplay(); startTimer(); }
 });
+addEventListener('pagehide', () => { store.flush(); });
 
 async function init() {
-  await loadMessages(); applyLocalizedStaticText(); await loadData(); await loadConfig(); syncSettingsControls();
+  await loadMessages(); applyLocalizedStaticText(); await loadData();
+  const { adopted } = await loadConfig();
+  // A fresh install starts with the browser locale's usual clock format.
+  if (!config.home) config.use24h = prefers24HourClock(browserLocale);
+  syncSettingsControls();
   if (!config.home || !config.onboardingComplete) showFirstRun();
-  else { renderColumns(); startTimer(); }
+  else { renderColumns(); startTimer(); if (adopted) showToast(t('syncAdopted')); }
 }
 
 init();

@@ -3,13 +3,13 @@
     "message": "Meridian"
   },
   "extensionDescription": {
-    "message": "Un hermoso reloj mundial en tu nueva pestaña para ver, planificar y conectar entre husos horarios."
+    "message": "Un hermoso reloj mundial en tu nueva pestaña para ver, planificar y conectar entre zonas horarias."
   },
   "addTimezone": {
-    "message": "Agregar huso horario"
+    "message": "Agregar zona horaria"
   },
   "settings": {
-    "message": "Ajustes"
+    "message": "Configuración"
   },
   "dashboardControls": {
     "message": "Controles del tablero"
@@ -18,16 +18,16 @@
     "message": "Relojes mundiales"
   },
   "searchResults": {
-    "message": "Resultados de ciudades y husos horarios"
+    "message": "Resultados de ciudades y zonas horarias"
   },
   "homeSearchResults": {
     "message": "Resultados de ciudades locales"
   },
   "searchCityOrTimezone": {
-    "message": "Buscá ciudad o huso horario..."
+    "message": "Busca una ciudad o zona horaria..."
   },
   "searchYourCity": {
-    "message": "Buscá tu ciudad..."
+    "message": "Busca tu ciudad..."
   },
   "format24h": {
     "message": "Formato de 24 horas"
@@ -36,19 +36,19 @@
     "message": "Mostrar segundos"
   },
   "changeHomeTimezone": {
-    "message": "Cambiar huso horario local"
+    "message": "Cambiar zona horaria local"
   },
   "welcomeTitle": {
     "message": "Bienvenido a Meridian"
   },
   "welcomeBody": {
-    "message": "Elegí tu huso horario local para empezar."
+    "message": "Elige tu zona horaria local para empezar."
   },
   "removeTimezone": {
-    "message": "Quitar huso horario"
+    "message": "Quitar zona horaria"
   },
   "removeNamedTimezone": {
-    "message": "Quitar el huso horario de $CITY$",
+    "message": "Quitar la zona horaria de $CITY$",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -56,10 +56,10 @@
     }
   },
   "homeTimezone": {
-    "message": "Huso horario local"
+    "message": "Zona horaria local"
   },
   "alreadyOnTimezone": {
-    "message": "$CITY$ ya está en este huso horario",
+    "message": "$CITY$ ya está en esta zona horaria",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -67,13 +67,13 @@
     }
   },
   "maxCitiesPerTimezone": {
-    "message": "Hasta 3 ciudades por huso horario"
+    "message": "Hasta 3 ciudades por zona horaria"
   },
   "maxTimezones": {
-    "message": "Hasta 10 husos horarios; quitá uno para agregar otro"
+    "message": "Hasta 10 zonas horarias; quita una para agregar otra"
   },
   "useDetectedLocation": {
-    "message": "Usar el huso horario detectado: $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "message": "Usar la zona horaria detectada: $CITY$, $COUNTRY$ ($TIMEZONE$)",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -87,7 +87,7 @@
     }
   },
   "detectedSearchPrompt": {
-    "message": "Detectado: $TIMEZONE$; buscá para seleccionar tu ciudad",
+    "message": "Detectado: $TIMEZONE$; busca para seleccionar tu ciudad",
     "placeholders": {
       "timezone": {
         "content": "$1"
@@ -285,14 +285,6 @@
     "message": "Ahora",
     "description": "Meridian product interface text."
   },
-  "tomorrow": {
-    "message": "Mañana",
-    "description": "Meridian product interface text."
-  },
-  "twoDays": {
-    "message": "+48 h",
-    "description": "Meridian product interface text."
-  },
   "returnToNow": {
     "message": "Ahora",
     "description": "Meridian product interface text."
@@ -360,7 +352,7 @@
     "description": "Meridian product interface text."
   },
   "bestOverlap": {
-    "message": "Mejor coincidencia: $WINDOWS$",
+    "message": "Próxima coincidencia: $WINDOWS$",
     "description": "Meridian product interface text.",
     "placeholders": {
       "windows": {
@@ -474,6 +466,84 @@
   "addCityToTimezone": {
     "message": "Agregar una ciudad en $TIMEZONE$",
     "description": "Title for timezone-scoped city search.",
-    "placeholders": { "timezone": { "content": "$1" } }
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "everyoneAvailableAtTime": {
+    "message": "Todos están dentro de su horario a esa hora.",
+    "description": "Availability summary while time traveling, when every clock is within its hours."
+  },
+  "timezoneAddedCount": {
+    "message": "$COUNT$ zona horaria agregada",
+    "description": "Singular form of the multi-add counter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncAdopted": {
+    "message": "Se cargaron tus relojes sincronizados",
+    "description": "Toast shown after Chrome Sync supplies clocks saved on another device."
+  },
+  "keepThisDevice": {
+    "message": "Usar los de este dispositivo",
+    "description": "Toast action that replaces the synced clocks with this device's clocks."
+  },
+  "syncSaveFailed": {
+    "message": "Chrome Sync no pudo guardar el último cambio. Se guardó en este dispositivo.",
+    "description": "Toast shown when a Chrome Sync write fails but the local copy was saved."
+  },
+  "syncUnavailable": {
+    "message": "Chrome Sync no está disponible en este momento",
+    "description": "Toast shown when the storage mode cannot be changed."
+  },
+  "workingDays": {
+    "message": "Días laborables",
+    "description": "Label for the working-day toggles in edit mode."
+  },
+  "noLaterOverlap": {
+    "message": "No hay más coincidencias en las próximas 48 horas.",
+    "description": "Planner summary when every overlap is before the planned time."
+  },
+  "jumpToOverlap": {
+    "message": "Mostrar este momento en el planificador",
+    "description": "Tooltip for the overlap summary button that moves the planner there."
+  },
+  "noSearchResults": {
+    "message": "No hay ciudades ni zonas horarias que coincidan",
+    "description": "Shown when a city or timezone search has no results."
+  },
+  "homeSetTo": {
+    "message": "Hogar: $CITY$",
+    "description": "Onboarding eyebrow naming the chosen home city.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "chooseDifferentHome": {
+    "message": "Elegir otro hogar",
+    "description": "Onboarding button that returns to the home city step."
+  },
+  "scrollClocksLeft": {
+    "message": "Mostrar relojes a la izquierda",
+    "description": "Button that scrolls to clocks off the left edge."
+  },
+  "scrollClocksRight": {
+    "message": "Mostrar relojes a la derecha",
+    "description": "Button that scrolls to clocks off the right edge."
+  },
+  "availability": {
+    "message": "Disponibilidad",
+    "description": "Settings section heading."
+  },
+  "availabilityHint": {
+    "message": "Resalta los relojes dentro de su horario y sus días laborables. Configúralos para cada reloj en el modo de edición (E).",
+    "description": "Settings note explaining shared availability."
   }
 }

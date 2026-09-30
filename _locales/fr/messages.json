@@ -110,11 +110,11 @@
     "description": "Meridian product interface text."
   },
   "addTimezoneShortcut": {
-    "message": "Ajouter un fuseau (A ou /)",
+    "message": "Ajouter un fuseau horaire (A ou /)",
     "description": "Meridian product interface text."
   },
   "settingsShortcut": {
-    "message": "Réglages (,)",
+    "message": "Paramètres (,)",
     "description": "Meridian product interface text."
   },
   "close": {
@@ -226,7 +226,7 @@
     "description": "Meridian product interface text."
   },
   "shortcutSettings": {
-    "message": "Réglages",
+    "message": "Paramètres",
     "description": "Meridian product interface text."
   },
   "shortcutEscape": {
@@ -283,14 +283,6 @@
   },
   "now": {
     "message": "Maintenant",
-    "description": "Meridian product interface text."
-  },
-  "tomorrow": {
-    "message": "Demain",
-    "description": "Meridian product interface text."
-  },
-  "twoDays": {
-    "message": "+48 h",
     "description": "Meridian product interface text."
   },
   "returnToNow": {
@@ -360,7 +352,7 @@
     "description": "Meridian product interface text."
   },
   "bestOverlap": {
-    "message": "Meilleur créneau : $WINDOWS$",
+    "message": "Prochain créneau commun : $WINDOWS$",
     "description": "Meridian product interface text.",
     "placeholders": {
       "windows": {
@@ -474,6 +466,84 @@
   "addCityToTimezone": {
     "message": "Ajouter une ville dans $TIMEZONE$",
     "description": "Title for timezone-scoped city search.",
-    "placeholders": { "timezone": { "content": "$1" } }
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "everyoneAvailableAtTime": {
+    "message": "Tout le monde est dans ses horaires à ce moment-là.",
+    "description": "Availability summary while time traveling, when every clock is within its hours."
+  },
+  "timezoneAddedCount": {
+    "message": "$COUNT$ fuseau ajouté",
+    "description": "Singular form of the multi-add counter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncAdopted": {
+    "message": "Horloges synchronisées chargées",
+    "description": "Toast shown after Chrome Sync supplies clocks saved on another device."
+  },
+  "keepThisDevice": {
+    "message": "Garder celles de cet appareil",
+    "description": "Toast action that replaces the synced clocks with this device's clocks."
+  },
+  "syncSaveFailed": {
+    "message": "Chrome Sync n’a pas pu enregistrer la dernière modification. Elle est conservée sur cet appareil.",
+    "description": "Toast shown when a Chrome Sync write fails but the local copy was saved."
+  },
+  "syncUnavailable": {
+    "message": "Chrome Sync est indisponible pour le moment",
+    "description": "Toast shown when the storage mode cannot be changed."
+  },
+  "workingDays": {
+    "message": "Jours travaillés",
+    "description": "Label for the working-day toggles in edit mode."
+  },
+  "noLaterOverlap": {
+    "message": "Aucun créneau commun plus tard dans les 48 prochaines heures.",
+    "description": "Planner summary when every overlap is before the planned time."
+  },
+  "jumpToOverlap": {
+    "message": "Afficher ce moment dans le planificateur",
+    "description": "Tooltip for the overlap summary button that moves the planner there."
+  },
+  "noSearchResults": {
+    "message": "Aucune ville ni aucun fuseau horaire ne correspond",
+    "description": "Shown when a city or timezone search has no results."
+  },
+  "homeSetTo": {
+    "message": "Domicile : $CITY$",
+    "description": "Onboarding eyebrow naming the chosen home city.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "chooseDifferentHome": {
+    "message": "Choisir un autre domicile",
+    "description": "Onboarding button that returns to the home city step."
+  },
+  "scrollClocksLeft": {
+    "message": "Afficher les horloges à gauche",
+    "description": "Button that scrolls to clocks off the left edge."
+  },
+  "scrollClocksRight": {
+    "message": "Afficher les horloges à droite",
+    "description": "Button that scrolls to clocks off the right edge."
+  },
+  "availability": {
+    "message": "Disponibilité",
+    "description": "Settings section heading."
+  },
+  "availabilityHint": {
+    "message": "Met en évidence les horloges pendant leurs heures et jours de travail. Réglez-les pour chaque horloge en mode édition (E).",
+    "description": "Settings note explaining shared availability."
   }
 }

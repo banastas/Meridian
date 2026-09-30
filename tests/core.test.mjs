@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   DEFAULT_WORKING_HOURS,
   DEFAULT_TIMEZONES,
+  MAX_TIMEZONES,
   addZoneByUtcOffset,
   areZonesAvailable,
   calculateLayoutWidth,
@@ -25,7 +26,9 @@ import {
   getSmoothGradientStops,
   getTextColor,
   getTimeInZone,
+  getZonedDateParts,
   isMinuteWithinHours,
+  isValidTimeZone,
   lerpColor,
   normalizeConfig,
   parseBackup,
@@ -33,6 +36,7 @@ import {
 } from '../core.js';
 
 const cities = JSON.parse(await readFile(new URL('../data/cities.json', import.meta.url), 'utf8'));
+const coordinates = JSON.parse(await readFile(new URL('../data/timezone-coordinates.json', import.meta.url), 'utf8'));
 
 function referenceOffset(timeZone, date) {
   const value = new Intl.DateTimeFormat('en-US', {
@@ -173,7 +177,7 @@ test('stored configurations repair a missing home column and malformed values', 
   });
   assert.deepEqual(normalized.zones.at(-1), {
     tz: 'Europe/Paris',
-    workingHours: { ...DEFAULT_WORKING_HOURS },
+    workingHours: { ...DEFAULT_WORKING_HOURS, days: [1, 2, 3, 4, 5] },
     cities: [{ city: 'Paris', country: 'FR' }],
   });
   assert.equal(normalized.use24h, false);
@@ -256,7 +260,7 @@ test('versioned configuration normalizes schedules, presets, privacy, and limits
     activePresetId: 'work',
   };
   const normalized = normalizeConfig(raw);
-  assert.deepEqual(normalized.zones[0].workingHours, { enabled: true, start: 0, end: 1439 });
+  assert.deepEqual(normalized.zones[0].workingHours, { enabled: true, start: 0, end: 1439, days: [1, 2, 3, 4, 5] });
   assert.equal(normalized.infoDensity, 'compact');
   assert.equal(normalized.visualTheme, 'solar');
   assert.equal(normalized.storageMode, 'sync');
@@ -281,4 +285,112 @@ test('JSON backups round-trip through the versioned repair contract', () => {
   assert.deepEqual(parseBackup(JSON.stringify(backup)), config);
   assert.throws(() => parseBackup({ app: 'Something else', config }), /another application/);
   assert.throws(() => parseBackup({ app: 'Meridian', config: {} }), /no home timezone/);
+});
+
+test('detection resolves legacy timezone aliases reported by the browser', () => {
+  // V8 reports these canonical IDs while the catalog uses current IANA names.
+  assert.equal(getRepresentativeCity(cities, 'Asia/Calcutta')?.city, 'Kolkata');
+  assert.equal(getRepresentativeCity(cities, 'Asia/Calcutta')?.tz, 'Asia/Kolkata');
+  assert.equal(getRepresentativeCity(cities, 'Europe/Kiev')?.city, 'Kyiv');
+  assert.equal(getRepresentativeCity(cities, 'Asia/Katmandu')?.city, 'Kathmandu');
+  assert.equal(getRepresentativeCity(cities, 'America/Buenos_Aires')?.city, 'Buenos Aires');
+  assert.equal(getRepresentativeCity(cities, 'Asia/Saigon')?.tz, 'Asia/Ho_Chi_Minh');
+  assert.equal(getRepresentativeCity(cities, 'Asia/Rangoon')?.city, 'Yangon');
+  assert.equal(getRepresentativeCity(cities, 'UTC'), null);
+  const systemAliases = [...new Set(cities.map(city => city.tz))]
+    .map(tz => new Intl.DateTimeFormat('en', { timeZone: tz }).resolvedOptions().timeZone);
+  for (const reported of systemAliases) {
+    assert.ok(getRepresentativeCity(cities, reported), `${reported} should resolve to a catalog city`);
+  }
+});
+
+test('configurations drop timezones the runtime cannot render', () => {
+  assert.equal(isValidTimeZone('Europe/Paris'), true);
+  assert.equal(isValidTimeZone('Mars/Olympus'), false);
+  const normalized = normalizeConfig({
+    home: { city: 'Paris', country: 'FR', tz: 'Europe/Paris' },
+    zones: [
+      { tz: 'Mars/Olympus', cities: [{ city: 'Olympus', country: 'XX' }] },
+      { tz: 'Europe/Paris', cities: [{ city: 'Paris', country: 'FR' }] },
+    ],
+    presets: [{ id: 'p', name: 'Broken', zones: [{ tz: 'Nowhere/Zone', cities: [{ city: 'X', country: 'XX' }] }] }],
+  });
+  assert.deepEqual(normalized.zones.map(zone => zone.tz), ['Europe/Paris']);
+  assert.deepEqual(normalized.presets[0].zones, []);
+  assert.throws(
+    () => parseBackup({ app: 'Meridian', config: { home: { city: 'X', country: 'US', tz: 'Mars/Olympus' } } }),
+    /no home timezone/,
+  );
+});
+
+test('the home timezone keeps a column even at the timezone limit', () => {
+  const zoneIds = [...new Set(cities.map(city => city.tz))].filter(tz => tz !== 'Pacific/Honolulu').slice(0, MAX_TIMEZONES);
+  const normalized = normalizeConfig({
+    home: { city: 'Honolulu', country: 'US', tz: 'Pacific/Honolulu' },
+    zones: zoneIds.map(tz => ({ tz, cities: [{ city: tz, country: 'XX' }] })),
+  });
+  assert.equal(normalized.zones.length, MAX_TIMEZONES);
+  assert.ok(normalized.zones.some(zone => zone.tz === 'Pacific/Honolulu'));
+});
+
+test('importing a backup never opts this browser into Chrome Sync', () => {
+  const synced = createBackup(normalizeConfig({
+    home: { city: 'Paris', country: 'FR', tz: 'Europe/Paris' },
+    storageMode: 'sync',
+    onboardingComplete: true,
+  }));
+  assert.equal(parseBackup(synced).storageMode, 'local');
+  assert.equal(parseBackup(synced, { storageMode: 'local' }).storageMode, 'local');
+  assert.equal(parseBackup(synced, { storageMode: 'sync' }).storageMode, 'sync');
+});
+
+test('sub-hour home offsets are labelled in minutes', () => {
+  assert.equal(formatRelativeOffset(570, 600), '−30m');
+  assert.equal(formatRelativeOffset(600, 570), '+30m');
+  assert.equal(formatRelativeOffset(345, 300), '+45m');
+});
+
+test('bundled solar coordinates describe each zone rather than its link target', () => {
+  const expectations = {
+    'Atlantic/Reykjavik': [64, 65],
+    'Europe/Oslo': [59, 60.5],
+    'Europe/Stockholm': [59, 60],
+    'Europe/Copenhagen': [55, 56],
+    'Europe/Amsterdam': [52, 53],
+    'Indian/Reunion': [-21.5, -20],
+    'Antarctica/Syowa': [-70, -68],
+    'Asia/Kolkata': [22, 23],
+  };
+  for (const [timeZone, [min, max]] of Object.entries(expectations)) {
+    const { latitude } = coordinates[timeZone];
+    assert.ok(latitude >= min && latitude <= max, `${timeZone} latitude ${latitude} outside ${min}…${max}`);
+  }
+});
+
+test('solar palette stays in daylight when a summer sunset falls after midnight', () => {
+  const reykjavik = coordinates['Atlantic/Reykjavik'];
+  const midsummer = new Date('2026-06-21T13:00:00Z');
+  const solar = getSolarTimes('Atlantic/Reykjavik', reykjavik, midsummer);
+  assert.ok(solar.sunset < solar.sunrise, 'fixture should wrap past local midnight');
+  const noon = getSolarAdjustedHour(13, solar);
+  assert.ok(noon > 10 && noon < 14, `13:00 should map near midday, got ${noon}`);
+  assert.ok(Math.abs(getSolarAdjustedHour(solar.sunrise, solar) - 5) < 1e-9);
+  assert.ok(Math.abs(getSolarAdjustedHour(solar.sunset, solar) - 19) < 1e-9);
+
+  // The mapping advances continuously through the day for ordinary and wrapped days.
+  for (const [timeZone, iso] of [['Atlantic/Reykjavik', '2026-06-21T12:00:00Z'], ['Europe/Paris', '2026-12-21T12:00:00Z'], ['Asia/Tokyo', '2026-03-20T03:00:00Z']]) {
+    const times = getSolarTimes(timeZone, coordinates[timeZone], new Date(iso));
+    let previous = getSolarAdjustedHour(times.sunrise, times);
+    for (let step = 1; step <= 96; step++) {
+      const hour = (times.sunrise + step / 4) % 24;
+      const value = getSolarAdjustedHour(hour, times);
+      const advance = ((value - previous) % 24 + 24) % 24;
+      assert.ok(advance > 0 && advance < 2, `${timeZone} jumped ${advance}h at ${hour.toFixed(2)}`);
+      previous = value;
+    }
+  }
+  // 13:00 in a Reykjavik midsummer renders daylight, not the dusk palette.
+  assert.equal(getZonedDateParts('Atlantic/Reykjavik', midsummer).hour, 13);
+  const { top, bottom } = getSolarGradientColors('Atlantic/Reykjavik', reykjavik, midsummer);
+  assert.equal(getTextColor(top, bottom), 'rgb(0, 0, 0)', 'midday palette is light enough for dark text');
 });

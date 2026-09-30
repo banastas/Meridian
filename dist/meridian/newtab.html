@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meridian</title>
   <link rel="icon" href="icons/icon16.png" sizes="16x16" type="image/png">
+  <link rel="preload" href="fonts/jbm-200.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/inter-500.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="newtab.css?v=1.2.2">
 </head>
 <body>
@@ -31,6 +33,7 @@
       </div>
       <input type="text" id="search-input" placeholder="Search city or timezone..." data-i18n-placeholder="searchCityOrTimezone" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="search-results" aria-expanded="false">
       <ul id="search-results" role="listbox" aria-label="City and timezone results" data-i18n-aria-label="searchResults"></ul>
+      <p id="search-empty" class="search-empty" role="status"></p>
       <div id="search-multi-footer" class="hidden">
         <p id="search-multi-status"></p>
         <button type="button" id="search-done" class="primary" data-i18n="doneAdding">Done adding</button>
@@ -55,6 +58,12 @@
         <select id="theme-select"><option value="clock" data-i18n="predictableClock">Predictable clock</option><option value="solar" data-i18n="solarAware">Solar-aware</option></select>
       </label>
       <label class="check-row"><input type="checkbox" id="toggle-motion"> <span data-i18n="atmosphericMotion">Smooth gradient transitions</span></label>
+    </section>
+
+    <section>
+      <h3 data-i18n="availability">Availability</h3>
+      <label class="check-row"><input type="checkbox" id="settings-availability"> <span data-i18n="sharedAvailability">Shared availability</span></label>
+      <p class="privacy-note" data-i18n="availabilityHint">Highlights clocks inside their working hours and days. Set them for each clock in edit mode (E).</p>
     </section>
 
     <section>
@@ -105,17 +114,19 @@
         <p id="welcome-body" data-i18n="welcomeBody">Select your home timezone to get started.</p>
         <input type="text" id="home-search" placeholder="Search your city..." data-i18n-placeholder="searchYourCity" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="home-results" aria-expanded="false">
         <ul id="home-results" role="listbox" aria-label="Home city results" data-i18n-aria-label="homeSearchResults"></ul>
+        <p id="home-empty" class="search-empty" role="status"></p>
         <div id="home-detected"></div>
       </div>
       <div id="onboarding-goal-step" class="hidden">
-        <p class="eyebrow" data-i18n="homeSet">Home is set</p>
+        <p class="eyebrow" id="home-set-label" data-i18n="homeSet">Home is set</p>
         <h1 data-i18n="buildYourWorld">Build your world</h1>
         <p data-i18n="onboardingGoalBody">Choose a starting point. You can change everything later.</p>
         <div class="goal-options">
           <button type="button" id="goal-people"><strong data-i18n="addMyPeople">Add my team or family</strong><span data-i18n="addMyPeopleHint">Quickly choose several cities</span></button>
-          <button type="button" id="goal-sample"><strong data-i18n="worldClockSample">World-clock sample</strong><span data-i18n="worldClockSampleHint">Start with six global cities</span></button>
+          <button type="button" id="goal-sample"><strong data-i18n="worldClockSample">World-clock sample</strong><span data-i18n="worldClockSampleHint">Start with major global cities</span></button>
           <button type="button" id="goal-home"><strong data-i18n="homeOnly">Only my home</strong><span data-i18n="homeOnlyHint">Keep the canvas minimal</span></button>
         </div>
+        <button type="button" id="goal-back" class="text-button" data-i18n="chooseDifferentHome">Choose a different home</button>
       </div>
     </div>
   </div>
@@ -123,17 +134,24 @@
   <section id="planner" class="hidden" aria-label="Time travel" data-i18n-aria-label="timeTravel">
     <div class="planner-copy">
       <span class="eyebrow" data-i18n="planningTime">Planning time</span>
-      <strong id="planner-time"></strong>
+      <span class="planner-when"><strong id="planner-time"></strong><span id="planner-offset"></span></span>
       <label class="planner-availability-toggle"><input type="checkbox" id="availability-toggle"> <span data-i18n="sharedAvailability">Shared availability</span></label>
       <span id="availability-summary" aria-live="polite"></span>
     </div>
     <label class="timeline-field">
       <span class="visually-hidden" data-i18n="timeTravelSlider">Time travel, in 15-minute steps</span>
       <input id="time-slider" type="range" min="0" max="2880" step="15" value="0">
-      <span class="timeline-labels" aria-hidden="true"><span data-i18n="now">Now</span><span data-i18n="tomorrow">Tomorrow</span><span data-i18n="twoDays">+48h</span></span>
+      <span id="timeline-days" class="timeline-days" aria-hidden="true"></span>
     </label>
     <button type="button" id="now-btn" class="primary" data-i18n="returnToNow">Now</button>
   </section>
+
+  <template id="edit-icons">
+    <svg data-icon="move-left" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5"></path><path d="m11 6-6 6 6 6"></path></svg>
+    <svg data-icon="move-right" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+    <svg data-icon="home" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11 12 4.5l8 6.5"></path><path d="M6.5 9.5V19h11V9.5"></path><path d="M10 19v-5h4v5"></path></svg>
+    <svg data-icon="remove" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14"></path><path d="M10 4h4"></path><path d="m7 7 1 12h8l1-12"></path><path d="M10.5 11v5"></path><path d="M13.5 11v5"></path></svg>
+  </template>
 
   <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"><span id="toast-message"></span><button type="button" id="toast-action" class="hidden"></button></div>
 
@@ -141,6 +159,15 @@
     <canvas id="gradient-canvas" aria-hidden="true"></canvas>
     <div id="columns"></div>
   </main>
+
+  <div class="scroll-fade left" aria-hidden="true"></div>
+  <div class="scroll-fade right" aria-hidden="true"></div>
+  <button type="button" id="scroll-left" class="scroll-button left" aria-label="Show clocks to the left" title="Show clocks to the left" data-i18n-aria-label="scrollClocksLeft" data-i18n-title="scrollClocksLeft">
+    <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 6-6 6 6 6"></path></svg>
+  </button>
+  <button type="button" id="scroll-right" class="scroll-button right" aria-label="Show clocks to the right" title="Show clocks to the right" data-i18n-aria-label="scrollClocksRight" data-i18n-title="scrollClocksRight">
+    <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9.5 6 6 6-6 6"></path></svg>
+  </button>
 
   <script type="module" src="newtab.js?v=1.2.2"></script>
 </body>

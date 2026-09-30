@@ -3,20 +3,32 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const candidates = [
-  '/usr/share/zoneinfo/zone1970.tab',
-  '/usr/share/zoneinfo/zone.tab',
-  '/usr/share/zoneinfo.default/zone.tab',
-  '/var/db/timezone/zoneinfo/zone.tab',
+const directories = [
+  '/usr/share/zoneinfo',
+  '/usr/share/zoneinfo.default',
+  '/var/db/timezone/zoneinfo',
 ];
+// zone.tab lists every zone at its own location. zone1970.tab omits zones
+// merged since 1970 (Europe/Oslo, Atlantic/Reykjavik), so it only fills gaps.
+const tabFiles = ['zone.tab', 'zone1970.tab'];
 
-async function firstReadable(paths) {
-  for (const candidate of paths) {
-    try {
-      return { path: candidate, text: await readFile(candidate, 'utf8') };
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+async function readOptional(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function findZoneTables() {
+  for (const directory of directories) {
+    const tables = [];
+    for (const file of tabFiles) {
+      const text = await readOptional(path.join(directory, file));
+      if (text !== null) tables.push({ path: path.join(directory, file), text });
     }
+    if (tables.length) return { directory, tables };
   }
   throw new Error('No IANA zone.tab file was found on this system.');
 }
@@ -32,23 +44,28 @@ function parseCoordinate(value) {
   };
 }
 
-const { path: sourcePath, text } = await firstReadable(candidates);
+const { directory, tables } = await findZoneTables();
 const coordinates = new Map();
-for (const line of text.split('\n')) {
-  if (!line || line.startsWith('#')) continue;
-  const [, coordinate, timeZone] = line.split('\t');
-  coordinates.set(timeZone, parseCoordinate(coordinate));
+for (const { text } of tables) {
+  for (const line of text.split('\n')) {
+    if (!line || line.startsWith('#')) continue;
+    const [, coordinate, timeZone] = line.split('\t');
+    if (!coordinates.has(timeZone)) coordinates.set(timeZone, parseCoordinate(coordinate));
+  }
 }
 
-const tzdataPath = path.join(path.dirname(sourcePath), 'tzdata.zi');
-try {
-  const tzdata = await readFile(tzdataPath, 'utf8');
+// Links only supply coordinates for zones without an entry of their own; a
+// link target can be thousands of kilometres away (Atlantic/Reykjavik links
+// to Africa/Abidjan).
+const tzdata = await readOptional(path.join(directory, 'tzdata.zi'));
+if (tzdata !== null) {
   const aliases = new Map();
   for (const line of tzdata.split('\n')) {
     const match = line.match(/^L\s+(\S+)\s+(\S+)$/);
     if (match) aliases.set(match[2], match[1]);
   }
   for (const [alias, initialTarget] of aliases) {
+    if (coordinates.has(alias)) continue;
     let target = initialTarget;
     const visited = new Set([alias]);
     while (aliases.has(target) && !visited.has(target)) {
@@ -57,8 +74,6 @@ try {
     }
     if (coordinates.has(target)) coordinates.set(alias, coordinates.get(target));
   }
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
 }
 
 const cities = JSON.parse(await readFile(path.join(root, 'data/cities.json'), 'utf8'));
@@ -71,4 +86,4 @@ await writeFile(
   path.join(root, 'data/timezone-coordinates.json'),
   `${JSON.stringify(result, null, 2)}\n`,
 );
-console.log(`Generated coordinates for ${usedZones.length} timezones from ${sourcePath}.`);
+console.log(`Generated coordinates for ${usedZones.length} timezones from ${tables.map(table => table.path).join(' and ')}.`);

@@ -309,14 +309,6 @@
     "message": "Now",
     "description": "Meridian product interface text."
   },
-  "tomorrow": {
-    "message": "Tomorrow",
-    "description": "Meridian product interface text."
-  },
-  "twoDays": {
-    "message": "+48h",
-    "description": "Meridian product interface text."
-  },
   "returnToNow": {
     "message": "Now",
     "description": "Meridian product interface text."
@@ -384,7 +376,7 @@
     "description": "Meridian product interface text."
   },
   "bestOverlap": {
-    "message": "Best overlap: $WINDOWS$",
+    "message": "Next overlap: $WINDOWS$",
     "description": "Meridian product interface text.",
     "placeholders": {
       "windows": {
@@ -498,6 +490,84 @@
   "addCityToTimezone": {
     "message": "Add a city in $TIMEZONE$",
     "description": "Title for timezone-scoped city search.",
-    "placeholders": { "timezone": { "content": "$1" } }
+    "placeholders": {
+      "timezone": {
+        "content": "$1"
+      }
+    }
+  },
+  "everyoneAvailableAtTime": {
+    "message": "Everyone is in their hours at this time.",
+    "description": "Availability summary while time traveling, when every clock is within its hours."
+  },
+  "timezoneAddedCount": {
+    "message": "$COUNT$ timezone added",
+    "description": "Singular form of the multi-add counter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncAdopted": {
+    "message": "Loaded your synced clocks",
+    "description": "Toast shown after Chrome Sync supplies clocks saved on another device."
+  },
+  "keepThisDevice": {
+    "message": "Keep this device's",
+    "description": "Toast action that replaces the synced clocks with this device's clocks."
+  },
+  "syncSaveFailed": {
+    "message": "Chrome Sync couldn't save the latest change. It's saved on this device.",
+    "description": "Toast shown when a Chrome Sync write fails but the local copy was saved."
+  },
+  "syncUnavailable": {
+    "message": "Chrome Sync isn't available right now",
+    "description": "Toast shown when the storage mode cannot be changed."
+  },
+  "workingDays": {
+    "message": "Working days",
+    "description": "Label for the working-day toggles in edit mode."
+  },
+  "noLaterOverlap": {
+    "message": "No later overlap in the next 48 hours.",
+    "description": "Planner summary when every overlap is before the planned time."
+  },
+  "jumpToOverlap": {
+    "message": "Show this time in the planner",
+    "description": "Tooltip for the overlap summary button that moves the planner there."
+  },
+  "noSearchResults": {
+    "message": "No matching cities or timezones",
+    "description": "Shown when a city or timezone search has no results."
+  },
+  "homeSetTo": {
+    "message": "Home: $CITY$",
+    "description": "Onboarding eyebrow naming the chosen home city.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "chooseDifferentHome": {
+    "message": "Choose a different home",
+    "description": "Onboarding button that returns to the home city step."
+  },
+  "scrollClocksLeft": {
+    "message": "Show clocks to the left",
+    "description": "Button that scrolls to clocks off the left edge."
+  },
+  "scrollClocksRight": {
+    "message": "Show clocks to the right",
+    "description": "Button that scrolls to clocks off the right edge."
+  },
+  "availability": {
+    "message": "Availability",
+    "description": "Settings section heading."
+  },
+  "availabilityHint": {
+    "message": "Highlights clocks inside their working hours and days. Set them for each clock in edit mode (E).",
+    "description": "Settings note explaining shared availability."
   }
 }

@@ -30,6 +30,7 @@ async function listFiles(directory, prefix = '') {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith('.')) continue;
     const relativePath = path.join(prefix, entry.name);
     if (entry.isDirectory()) {
       files.push(...await listFiles(path.join(directory, entry.name), relativePath));
@@ -109,6 +110,16 @@ for (const control of ['time-travel-btn', 'availability-toggle', 'edit-btn', 'ex
 }
 invariant(/:focus-visible/.test(css) && /:focus-within/.test(css), 'Visible keyboard focus styles are required.');
 invariant(/prefers-reduced-motion/.test(css) && /forced-colors/.test(css), 'Motion and forced-color preferences must be supported.');
+const fontReferences = new Set([
+  ...[...css.matchAll(/url\('(fonts\/[^']+)'\)/g)].map(match => match[1]),
+  ...[...html.matchAll(/rel="preload" href="(fonts\/[^"]+)"/g)].map(match => match[1]),
+]);
+invariant(fontReferences.size > 0, 'Bundled fonts must be referenced.');
+for (const font of fontReferences) {
+  const bytes = await readFile(path.join(root, font)).catch(() => null);
+  invariant(bytes, `Referenced font is missing: ${font}`);
+  invariant(font.endsWith('.woff2') && bytes.toString('ascii', 0, 4) === 'wOF2', `${font} must be WOFF2.`);
+}
 invariant(!/toLocaleString\(/.test(javascript), 'Timezone offsets must not reparse localized strings.');
 invariant(!/\.innerHTML\s*=/.test(javascript), 'Runtime UI must use safe DOM construction instead of innerHTML.');
 invariant(!/https?:\/\//.test(`${html}\n${javascript}\n${css}`), 'Runtime files must not make external requests.');
@@ -199,7 +210,7 @@ if (validateDist) {
     'LICENSE', 'core.js', 'manifest.json', 'newtab.css', 'newtab.html', 'newtab.js',
     ...(await listFiles(path.join(root, '_locales'), '_locales')),
     ...(await listFiles(path.join(root, 'data'), 'data')),
-    ...((await listFiles(path.join(root, 'fonts'), 'fonts')).filter(file => file.endsWith('.ttf'))),
+    ...((await listFiles(path.join(root, 'fonts'), 'fonts')).filter(file => file.endsWith('.woff2'))),
     ...((await listFiles(path.join(root, 'icons'), 'icons')).filter(file => /icon(?:16|48|128)\.png$/.test(file))),
   ].sort();
   const packagedFiles = (await listFiles(packageRoot)).sort();

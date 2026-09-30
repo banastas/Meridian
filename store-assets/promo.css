@@ -1,18 +1,18 @@
 @font-face {
   font-family: "Inter";
-  src: url("../fonts/inter-400.ttf") format("truetype");
+  src: url("../fonts/inter-400.woff2") format("woff2");
   font-weight: 400;
 }
 
 @font-face {
   font-family: "Inter";
-  src: url("../fonts/inter-600.ttf") format("truetype");
+  src: url("../fonts/inter-600.woff2") format("woff2");
   font-weight: 600;
 }
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("../fonts/jbm-300.ttf") format("truetype");
+  src: url("../fonts/jbm-300.woff2") format("woff2");
   font-weight: 300;
 }
 

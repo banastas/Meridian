@@ -19,13 +19,13 @@ const runtimePaths = [
   'newtab.js',
   '_locales',
   'data',
-  'fonts/inter-300.ttf',
-  'fonts/inter-400.ttf',
-  'fonts/inter-500.ttf',
-  'fonts/inter-600.ttf',
-  'fonts/jbm-200.ttf',
-  'fonts/jbm-300.ttf',
-  'fonts/jbm-400.ttf',
+  'fonts/inter-300.woff2',
+  'fonts/inter-400.woff2',
+  'fonts/inter-500.woff2',
+  'fonts/inter-600.woff2',
+  'fonts/jbm-200.woff2',
+  'fonts/jbm-300.woff2',
+  'fonts/jbm-400.woff2',
   'icons/icon16.png',
   'icons/icon48.png',
   'icons/icon128.png'
@@ -35,6 +35,7 @@ async function listFiles(directory, prefix = '') {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith('.')) continue;
     const relativePath = path.join(prefix, entry.name);
     if (entry.isDirectory()) {
       files.push(...await listFiles(path.join(directory, entry.name), relativePath));
@@ -59,7 +60,8 @@ for (const relativePath of runtimePaths) {
   const destination = path.join(packageRoot, relativePath);
   const sourceStat = await stat(source);
   await mkdir(path.dirname(destination), { recursive: true });
-  await cp(source, destination, { recursive: sourceStat.isDirectory() });
+  // Hidden files such as Finder's .DS_Store never ship in the release.
+  await cp(source, destination, { recursive: sourceStat.isDirectory(), filter: file => !path.basename(file).startsWith('.') });
 }
 
 const packageFiles = await listFiles(packageRoot);
