@@ -6,18 +6,18 @@
 
 ![Meridian showing seven world clocks across a continuous day-to-night gradient](store-assets/meridian-screenshot-1280x800.png)
 
-Meridian is a private, offline-first Chrome extension that turns every new tab into a world clock and planning surface. Its continuous gradient shows where each selected location is in its day, while time travel and shared availability make it easier to find a good moment to connect.
+Meridian is a private, offline-first Chrome extension that displays world clocks in each new tab. Its gradient shows the time of day in each selected location. You can preview future times and compare working hours to find shared availability.
 
 [Install from the Chrome Web Store](https://chromewebstore.google.com/detail/meridian/jldjgjlnkhfngchiaehmmeneipcolafp) or [explore the product page](https://banast.as/meridian/).
 
 ## Highlights
 
-- **A living view of time:** Twelve color bands interpolate by the minute and blend across one continuous canvas.
+- **Time-based colors:** Twelve color bands interpolate by the minute and blend across one continuous canvas.
 - **Planning across locations:** Move every clock up to 48 hours ahead in quarter-hour steps, see each day boundary on the timeline, and jump to the next shared availability window from configurable working hours and working days.
 - **599 cities and 415 IANA time zones:** Search by localized city, country, time-zone name, abbreviation such as IST or CET, or alias, with each result's local time.
 - **Flexible clock sets:** Reorder and group clocks, choose a home time zone, and save named presets for work, family, or travel.
 - **Useful display controls:** Choose 12-hour or 24-hour time, optional seconds, compact density, and fixed-clock or solar-aware gradients.
-- **Four localized experiences:** English, French, Spanish, and Argentine Spanish cover the interface, dates, country names, and city aliases, with regional date order and clock format.
+- **Four language options:** English, French, Spanish, and Argentine Spanish cover the interface, dates, country names, and city aliases, with regional date order and clock format.
 - **Keyboard and accessibility support:** Add, plan, edit, and open settings without a mouse. Reduced motion, forced colors, focus states, and WCAG-aware text contrast are built in.
 - **Private portability:** Keep settings local, opt into Chrome Sync, or export and import a versioned JSON backup.
 
