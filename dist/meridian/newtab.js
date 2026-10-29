@@ -21,11 +21,14 @@ import {
   formatUtcOffset,
   getDayStarts,
   getGradientColors,
+  getLocalMinuteOfDay,
   getNextOffsetTransition,
   getOffsetMinutes,
   getRepresentativeCity,
-  getSolarGradientColors,
   getSmoothGradientStops,
+  getSkyLight,
+  getSolarPaletteHour,
+  mixColorAlpha,
   getTextColor,
   getTimeInZone as getCoreTimeInZone,
   getTimeZoneSearchNames,
@@ -168,8 +171,8 @@ const $settingsPanel = byId('settings-panel');
 const $toggle24h = byId('toggle-24h');
 const $toggleSeconds = byId('toggle-seconds');
 const $toggleMotion = byId('toggle-motion');
-const $densitySelect = byId('density-select');
-const $themeSelect = byId('theme-select');
+const $densityInputs = [...document.querySelectorAll('input[name="density"]')];
+const $themeInputs = [...document.querySelectorAll('input[name="theme"]')];
 const $storageSelect = byId('storage-select');
 const $presetSelect = byId('preset-select');
 const $presetName = byId('preset-name');
@@ -197,6 +200,26 @@ const $timeSlider = byId('time-slider');
 const $timelineDays = byId('timeline-days');
 const $scrollLeft = byId('scroll-left');
 const $scrollRight = byId('scroll-right');
+const $timelineTrack = $planner.querySelector('.timeline-track');
+const $timelineSky = byId('timeline-sky');
+const $timelineWindows = byId('timeline-windows');
+const $timelineTicks = byId('timeline-ticks');
+const $travelChip = byId('travel-chip');
+const $travelChipText = byId('travel-chip-text');
+const $skyEvents = byId('sky-events');
+const $columnMenu = byId('column-menu');
+const $hoursPopover = byId('hours-popover');
+const $hoursEnabled = byId('hours-enabled');
+const $hoursStart = byId('hours-start');
+const $hoursEnd = byId('hours-end');
+const $hoursStartHandle = byId('hours-start-handle');
+const $hoursEndHandle = byId('hours-end-handle');
+const $hoursDays = byId('hours-days');
+const $presetSwitcher = byId('preset-switcher');
+const $presetSwitcherBtn = byId('preset-switcher-btn');
+const $presetSwitcherName = byId('preset-switcher-name');
+const $presetMenu = byId('preset-menu');
+const $favicon = document.querySelector('link[rel="icon"]');
 const $toast = byId('toast');
 const $toastMessage = byId('toast-message');
 const $toastAction = byId('toast-action');
@@ -232,6 +255,12 @@ function resumeToast() {
 }
 $toast.addEventListener('mouseenter', pauseToast); $toast.addEventListener('focusin', pauseToast);
 $toast.addEventListener('mouseleave', resumeToast); $toast.addEventListener('focusout', resumeToast);
+
+// Motion. Layout changes animate unless the system asks for reduced motion;
+// purely decorative motion also follows the smooth-transitions setting.
+const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+function prefersReducedMotion() { return reducedMotionQuery.matches; }
+function decorativeMotion() { return config.atmosphericMotion && !prefersReducedMotion(); }
 
 // Time and formatting
 function viewedDate() {
@@ -295,7 +324,10 @@ function formatTransition(transition, date) {
 function getCityKey(city, country) { return `${city}|${country}`; }
 function getLocalizedCityName(city) { return cityLocalization.names?.[getCityKey(city.city, city.country)] || city.city; }
 
-function renderColumns() {
+function renderColumns({ animate = false } = {}) {
+  const snapshot = animate ? captureLayout() : null;
+  closeMenu({ restoreFocus: false });
+  closeHoursPopover({ restoreFocus: false });
   $columns.replaceChildren();
   lastCanvasKey = '';
   config.zones.forEach((zone, index) => {
@@ -318,6 +350,12 @@ function renderColumns() {
     cityLabel.textContent = cityNames;
     const timeDisplay = document.createElement('div');
     timeDisplay.className = 'time-display';
+    // Hours, minutes, and seconds are separate so each can roll on its own and
+    // the colon can be kerned and breathe.
+    const part = (className, text = '') => {
+      const element = document.createElement('span'); element.className = className; element.textContent = text; return element;
+    };
+    timeDisplay.append(part('time-hours'), part('colon', ':'), part('time-minutes'), part('seconds'), part('ampm'));
     const dateDisplay = document.createElement('div');
     dateDisplay.className = 'date-display';
     const info = document.createElement('div');
@@ -331,12 +369,72 @@ function renderColumns() {
     const availabilityBand = document.createElement('span');
     availabilityBand.className = 'availability-band';
     availabilityBand.setAttribute('aria-hidden', 'true');
-    column.append(availabilityBand, content, createEditControls(zone, index));
+    column.append(createDragGrip(), availabilityBand, content, createEditControls(zone, index));
     attachDragHandlers(column);
     $columns.append(column);
   });
   document.body.classList.toggle('edit-mode', editMode);
   updateDisplay();
+  playLayout(snapshot);
+}
+
+// Animates a re-render: each surviving clock slides from its old position,
+// new clocks rise into place, and the previous sky cross-fades into the new one.
+function captureLayout() {
+  if (prefersReducedMotion() || !$columns.children.length || !$canvas.width) return null;
+  const positions = new Map();
+  for (const column of $columns.children) {
+    const rect = column.getBoundingClientRect();
+    positions.set(column.dataset.tz, rect.left + rect.width / 2);
+  }
+  const ghost = document.createElement('canvas');
+  ghost.className = 'canvas-ghost'; ghost.setAttribute('aria-hidden', 'true');
+  ghost.width = $canvas.width; ghost.height = $canvas.height;
+  ghost.style.width = $canvas.style.width; ghost.style.height = $canvas.style.height;
+  ghost.getContext('2d').drawImage($canvas, 0, 0);
+  return { positions, ghost };
+}
+
+function playLayout(snapshot) {
+  if (!snapshot) return;
+  const ease = 'cubic-bezier(.2,.8,.2,1)';
+  const animations = [];
+  $canvas.after(snapshot.ghost);
+  const fade = snapshot.ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 560, easing: 'ease-out', fill: 'forwards' });
+  fade.finished.finally(() => snapshot.ghost.remove());
+  for (const column of $columns.children) {
+    const content = column.querySelector('.column-content');
+    const before = snapshot.positions.get(column.dataset.tz);
+    if (before === undefined) {
+      animations.push(content.animate([
+        { opacity: 0, transform: 'translateY(16px) scale(.97)', filter: 'blur(6px)' },
+        { opacity: 1, transform: 'none', filter: 'none' },
+      ], { duration: 620, delay: 140, easing: ease, fill: 'backwards' }));
+      continue;
+    }
+    const rect = column.getBoundingClientRect();
+    const dx = before - (rect.left + rect.width / 2);
+    if (Math.abs(dx) > 1) animations.push(content.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: 520, easing: ease }));
+  }
+  // Columns clip their content; let clocks travel across neighbors while they slide.
+  if (!animations.length) return;
+  const columns = $columns.children;
+  for (const column of columns) column.classList.add('is-reflowing');
+  Promise.allSettled(animations.map(animation => animation.finished))
+    .then(() => { for (const column of columns) column.classList.remove('is-reflowing'); });
+}
+
+// Sets a clock part, rolling the new value in when it changes.
+function setRolling(element, text) {
+  if (element.textContent === text) return;
+  const roll = element.textContent !== '' && decorativeMotion();
+  element.textContent = text;
+  if (roll) {
+    element.animate([
+      { transform: 'translateY(-0.24em)', opacity: 0, filter: 'blur(2px)' },
+      { transform: 'none', opacity: 1, filter: 'none' },
+    ], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
 }
 
 // Edit icons live in a <template> in newtab.html beside the toolbar icons.
@@ -367,147 +465,437 @@ function getWeekdays() {
   return days;
 }
 
+function getLiveZone(timeZone) { return config.zones.find(zone => zone.tz === timeZone); }
+
+const hourFormatterCache = new Map();
+function formatMinuteOfDay(minutes, compact = false) {
+  const key = `${currentLocale}:${config.use24h}:${compact && minutes % 60 === 0}`;
+  if (!hourFormatterCache.has(key)) {
+    hourFormatterCache.set(key, new Intl.DateTimeFormat(currentLocale, {
+      timeZone: 'UTC', hour: 'numeric', hour12: !config.use24h,
+      ...(compact && minutes % 60 === 0 && !config.use24h ? {} : { minute: '2-digit' }),
+    }));
+  }
+  return hourFormatterCache.get(key).format(new Date(Date.UTC(2024, 0, 1, 0, minutes % 1440)));
+}
+
+// "Mo–Fr", "Every day", or the individual days when they are not consecutive.
+function summarizeDays(days) {
+  if (days.length === 7) return t('everyDay');
+  const ordered = getWeekdays().filter(({ day }) => days.includes(day));
+  const all = getWeekdays().map(({ day }) => day);
+  const positions = ordered.map(({ day }) => all.indexOf(day));
+  const consecutive = positions.every((position, index) => index === 0 || position === positions[index - 1] + 1);
+  if (consecutive && ordered.length > 2) return `${ordered[0].short}–${ordered.at(-1).short}`;
+  return ordered.map(({ short }) => short).join(' ');
+}
+
+function describeHours(hours) {
+  if (!hours.enabled) return { time: t('notInAvailability'), days: '' };
+  return { time: `${formatMinuteOfDay(hours.start, true)}–${formatMinuteOfDay(hours.end, true)}`, days: summarizeDays(hours.days || []) };
+}
+
+function updateHoursChip(timeZone) {
+  const zone = getLiveZone(timeZone);
+  const chip = $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"] [data-action="hours"]`);
+  if (!zone || !chip) return;
+  const { time, days } = describeHours(zone.workingHours);
+  chip.querySelector('.hours-chip-label').textContent = time;
+  chip.querySelector('.hours-chip-days').textContent = days;
+  chip.classList.toggle('is-off', !zone.workingHours.enabled);
+  chip.setAttribute('aria-label', `${t('workingHoursFor', zone.cities.map(getLocalizedCityName).join(', '))}: ${[time, days].filter(Boolean).join(', ')}`);
+}
+
+// Edit mode adds a drag handle at the top of each clock and one compact row
+// below it: the working-hours summary (which opens the hours editor) and a
+// menu for everything else.
+function createDragGrip() {
+  const grip = document.createElement('span');
+  grip.className = `drag-grip${editMode ? '' : ' hidden'}`; grip.title = t('dragToReorder'); grip.setAttribute('aria-hidden', 'true');
+  grip.append(createEditIcon('grip'));
+  return grip;
+}
+
 function createEditControls(zone, index) {
   const controls = document.createElement('div');
   controls.className = `edit-controls${editMode ? '' : ' hidden'}`;
-
   const cityNames = zone.cities.map(getLocalizedCityName).join(', ');
-  const button = (action, label, handler, disabled = false) => {
-    const element = document.createElement('button');
-    element.type = 'button'; element.title = label; element.dataset.action = action;
-    element.setAttribute('aria-label', label); element.disabled = disabled;
-    element.append(createEditIcon(action) || t('groupCityShort'));
-    element.addEventListener('click', handler); return element;
-  };
-  controls.append(
-    button('move-left', t('moveLeft'), () => moveZone(zone.tz, -1, '[data-action="move-left"]'), index === 0),
-    button('move-right', t('moveRight'), () => moveZone(zone.tz, 1, '[data-action="move-right"]'), index === config.zones.length - 1),
-  );
-  if (config.home?.tz !== zone.tz) {
-    controls.append(
-      button('home', t('setAsHome'), () => setHome(zone.cities[0].city, zone.cities[0].country, zone.tz, true)),
-      button('remove', t('removeNamedTimezone', cityNames), () => removeZone(zone.tz)),
-    );
-  }
-  controls.append(button('group', t('groupCity'), event => openSearch('group', event.currentTarget, zone.tz)));
 
-  const hours = document.createElement('div');
-  hours.className = 'hours-editor';
-  hours.setAttribute('role', 'group');
-  hours.setAttribute('aria-label', `${t('hoursShort')} — ${cityNames}`);
-  const toggle = document.createElement('label');
-  toggle.className = 'hours-toggle';
-  const enabled = document.createElement('input');
-  enabled.type = 'checkbox'; enabled.checked = zone.workingHours.enabled;
-  enabled.setAttribute('aria-label', t('includeWorkingHours'));
-  const label = document.createElement('span'); label.textContent = t('hoursShort');
-  toggle.append(enabled, label);
-  const start = document.createElement('input');
-  start.type = 'time'; start.value = formatInputTime(zone.workingHours.start);
-  start.setAttribute('aria-label', t('workingDayStarts'));
-  const end = document.createElement('input');
-  end.type = 'time'; end.value = formatInputTime(zone.workingHours.end);
-  end.setAttribute('aria-label', t('workingDayEnds'));
-  const range = document.createElement('span');
-  range.className = 'hours-range';
-  range.append(start, document.createTextNode('–'), end);
+  const hours = document.createElement('button');
+  hours.type = 'button'; hours.className = 'hours-chip'; hours.dataset.action = 'hours';
+  hours.setAttribute('aria-haspopup', 'dialog'); hours.setAttribute('aria-expanded', 'false');
+  const text = document.createElement('span'); text.className = 'hours-chip-text';
+  const label = document.createElement('span'); label.className = 'hours-chip-label';
+  const days = document.createElement('span'); days.className = 'hours-chip-days';
+  text.append(label, days);
+  hours.append(createEditIcon('hours'), text);
+  hours.addEventListener('click', () => openHoursPopover(zone.tz, hours));
 
-  const dayPicker = document.createElement('div');
-  dayPicker.className = 'day-picker';
-  dayPicker.setAttribute('role', 'group');
-  dayPicker.setAttribute('aria-label', `${t('workingDays')} — ${cityNames}`);
-  // saveConfig() replaces zone objects, so always update the live one.
-  const liveZone = () => config.zones.find(item => item.tz === zone.tz);
-  const dayChips = getWeekdays().map(({ day, short, long }) => {
-    const chip = document.createElement('button');
-    chip.type = 'button'; chip.className = 'day-chip'; chip.textContent = short; chip.title = long;
-    chip.setAttribute('aria-label', long);
-    chip.setAttribute('aria-pressed', String(zone.workingHours.days.includes(day)));
-    chip.addEventListener('click', () => {
-      const current = liveZone();
+  const more = document.createElement('button');
+  more.type = 'button'; more.className = 'more-button'; more.dataset.action = 'more';
+  more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false');
+  more.setAttribute('aria-controls', 'column-menu');
+  more.setAttribute('aria-label', t('moreActions', cityNames)); more.title = t('moreActions', cityNames);
+  more.append(createEditIcon('more'));
+  more.addEventListener('click', () => {
+    if (openMenuState?.anchor === more) { closeMenu(); return; }
+    const isHome = config.home?.tz === zone.tz;
+    const position = config.zones.findIndex(item => item.tz === zone.tz);
+    openMenu($columnMenu, more, [
+      { icon: 'move-left', label: t('moveLeft'), disabled: position === 0, run: () => moveZone(zone.tz, -1, '[data-action="more"]') },
+      { icon: 'move-right', label: t('moveRight'), disabled: position === config.zones.length - 1, run: () => moveZone(zone.tz, 1, '[data-action="more"]') },
+      ...(isHome ? [] : [{ icon: 'home', label: t('setAsHome'), run: () => setHome(zone.cities[0].city, zone.cities[0].country, zone.tz, true) }]),
+      { icon: 'group', label: t('groupCity'), run: () => openSearch('group', more, zone.tz) },
+      ...(isHome ? [] : [{ separator: true }, { icon: 'remove', label: t('removeNamedTimezone', cityNames), danger: true, run: () => removeZone(zone.tz) }]),
+    ], 'above');
+  });
+
+  controls.append(hours, more);
+  queueMicrotask(() => updateHoursChip(zone.tz));
+  return controls;
+}
+
+// Menus: arrows move between items, Escape returns to the button, and Tab or a
+// click elsewhere closes the menu.
+let openMenuState = null;
+function openMenu(menu, anchor, items, placement = 'below') {
+  closeMenu({ restoreFocus: false });
+  menu.replaceChildren(...items.map(item => {
+    if (item.separator) {
+      const separator = document.createElement('div'); separator.className = 'menu-separator'; separator.role = 'separator'; return separator;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = item.checked === undefined ? 'menuitem' : 'menuitemradio';
+    if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
+    if (item.danger) button.className = 'danger-text';
+    const icon = item.icon ? createEditIcon(item.icon) : item.checked ? createEditIcon('check') : null;
+    const iconSlot = document.createElement('span'); iconSlot.className = 'menu-icon';
+    if (icon) iconSlot.append(icon);
+    const text = document.createElement('span'); text.className = 'menu-label'; text.textContent = item.label;
+    button.append(iconSlot, text);
+    if (item.hint) { const hint = document.createElement('kbd'); hint.textContent = item.hint; button.append(hint); }
+    button.disabled = Boolean(item.disabled);
+    button.addEventListener('click', () => { closeMenu({ restoreFocus: false }); item.run(); });
+    return button;
+  }));
+  menu.classList.remove('hidden');
+  anchor.setAttribute('aria-expanded', 'true');
+  openMenuState = { menu, anchor };
+  positionFloating(menu, anchor, placement);
+  menu.querySelector('button:not(:disabled)')?.focus();
+}
+
+function closeMenu({ restoreFocus = true } = {}) {
+  if (!openMenuState) return false;
+  const { menu, anchor } = openMenuState;
+  openMenuState = null;
+  menu.classList.add('hidden');
+  anchor.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && anchor.isConnected) anchor.focus();
+  return true;
+}
+
+function menuKeydown(event) {
+  const items = [...event.currentTarget.querySelectorAll('button:not(:disabled)')];
+  const index = items.indexOf(document.activeElement);
+  const moves = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: items.length - 1 };
+  if (event.key in moves) {
+    event.preventDefault();
+    items[(moves[event.key] + items.length) % items.length]?.focus();
+  } else if (event.key === 'Escape') {
+    event.preventDefault(); closeMenu();
+  } else if (event.key === 'Tab') closeMenu({ restoreFocus: false });
+}
+$columnMenu.addEventListener('keydown', menuKeydown);
+$presetMenu.addEventListener('keydown', menuKeydown);
+
+// Places a fixed-position menu or popover beside its button, inside the viewport.
+function positionFloating(element, anchor, placement) {
+  const rect = anchor.getBoundingClientRect();
+  const width = element.offsetWidth, height = element.offsetHeight, gap = 8, margin = 12;
+  const left = Math.max(margin, Math.min(innerWidth - width - margin, rect.left + rect.width / 2 - width / 2));
+  const above = rect.top - gap - height;
+  const top = placement === 'above' && above > margin ? above : Math.min(innerHeight - height - margin, rect.bottom + gap);
+  element.style.left = `${Math.round(left)}px`;
+  element.style.top = `${Math.round(Math.max(margin, top))}px`;
+}
+
+// Working-hours editor: a 24-hour bar painted with the day's sky, two handles
+// for the start and end, exact time fields, and the working days.
+let hoursState = null;
+const HOURS_STEP = 15;
+
+function openHoursPopover(timeZone, chip) {
+  if (hoursState?.tz === timeZone) { closeHoursPopover(); return; }
+  closeMenu({ restoreFocus: false });
+  closeHoursPopover({ restoreFocus: false });
+  const zone = getLiveZone(timeZone);
+  if (!zone) return;
+  hoursState = { tz: timeZone, chip };
+  byId('hours-title').textContent = t('workingHoursFor', zone.cities.map(getLocalizedCityName).join(', '));
+  $hoursDays.replaceChildren(...getWeekdays().map(({ day, short, long }) => {
+    const chipButton = document.createElement('button');
+    chipButton.type = 'button'; chipButton.className = 'day-chip'; chipButton.dataset.day = String(day);
+    chipButton.textContent = short; chipButton.title = long; chipButton.setAttribute('aria-label', long);
+    chipButton.addEventListener('click', () => {
+      const current = getLiveZone(timeZone);
       if (!current) return;
       const days = new Set(current.workingHours.days);
       if (days.has(day)) {
         if (days.size === 1) return; // keep at least one working day
         days.delete(day);
       } else days.add(day);
-      current.workingHours = { ...current.workingHours, days: [...days].sort((a, b) => a - b) };
-      chip.setAttribute('aria-pressed', String(days.has(day)));
-      saveConfig(); updateDisplay();
+      updateHours({ days: [...days].sort((a, b) => a - b) });
     });
-    return chip;
-  });
-  dayPicker.append(...dayChips);
+    return chipButton;
+  }));
+  byId('hours-bar-sky').style.background = createDayGradient(hour => getGradientColors(Math.floor(hour) % 24, (hour % 1) * 60));
+  $hoursPopover.classList.remove('hidden');
+  chip.setAttribute('aria-expanded', 'true');
+  syncHoursPopover();
+  positionFloating($hoursPopover, chip, 'above');
+  $hoursEnabled.focus();
+}
 
-  // Hours and days only matter while the clock takes part in availability.
-  const setScheduleDisabled = disabled => { for (const control of [start, end, ...dayChips]) control.disabled = disabled; };
-  setScheduleDisabled(!zone.workingHours.enabled);
-  const update = () => {
-    const current = liveZone();
-    if (!current) return;
-    if (!start.value || !end.value) {
-      start.value = formatInputTime(current.workingHours.start); end.value = formatInputTime(current.workingHours.end);
-      return;
-    }
-    current.workingHours = { ...current.workingHours, enabled: enabled.checked, start: parseInputTime(start.value), end: parseInputTime(end.value) };
-    setScheduleDisabled(!enabled.checked);
-    saveConfig(); updateDisplay();
+function closeHoursPopover({ restoreFocus = true } = {}) {
+  if (!hoursState) return false;
+  const { tz } = hoursState;
+  hoursState = null;
+  $hoursPopover.classList.add('hidden');
+  const chip = $columns.querySelector(`[data-tz="${CSS.escape(tz)}"] [data-action="hours"]`);
+  chip?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) chip?.focus();
+  return true;
+}
+
+function updateHours(patch) {
+  const zone = hoursState && getLiveZone(hoursState.tz);
+  if (!zone) return;
+  zone.workingHours = { ...zone.workingHours, ...patch };
+  saveConfig(); updateDisplay(); syncHoursPopover(); updateHoursChip(hoursState.tz);
+}
+
+// A stored end of 0 after a later start means midnight, drawn at the right edge.
+function handlePosition(minutes, isEnd, hours) {
+  return isEnd && minutes === 0 && hours.start > 0 ? 1440 : minutes;
+}
+
+function syncHoursPopover() {
+  const zone = hoursState && getLiveZone(hoursState.tz);
+  if (!zone) return;
+  const hours = zone.workingHours;
+  $hoursEnabled.checked = hours.enabled;
+  $hoursPopover.classList.toggle('is-off', !hours.enabled);
+  $hoursStart.value = formatInputTime(hours.start); $hoursEnd.value = formatInputTime(hours.end);
+  for (const [handle, value, isEnd] of [[$hoursStartHandle, hours.start, false], [$hoursEndHandle, hours.end, true]]) {
+    handle.style.setProperty('--position', String(handlePosition(value, isEnd, hours) / 1440));
+    handle.setAttribute('aria-valuenow', String(value));
+    handle.setAttribute('aria-valuetext', formatMinuteOfDay(value));
+    handle.setAttribute('aria-disabled', String(!hours.enabled));
+    handle.tabIndex = hours.enabled ? 0 : -1;
+  }
+  const range = byId('hours-bar-range'), wrap = byId('hours-bar-wrap');
+  const end = handlePosition(hours.end, true, hours);
+  if (hours.start === hours.end) {
+    range.style.left = '0%'; range.style.width = '100%'; wrap.hidden = true;
+  } else if (hours.start < end) {
+    range.style.left = `${hours.start / 14.4}%`; range.style.width = `${(end - hours.start) / 14.4}%`; wrap.hidden = true;
+  } else {
+    range.style.left = `${hours.start / 14.4}%`; range.style.width = `${(1440 - hours.start) / 14.4}%`;
+    wrap.style.left = '0%'; wrap.style.width = `${hours.end / 14.4}%`; wrap.hidden = false;
+  }
+  for (const control of [$hoursStart, $hoursEnd]) control.disabled = !hours.enabled;
+  for (const chipButton of $hoursDays.children) {
+    chipButton.setAttribute('aria-pressed', String(hours.days.includes(Number(chipButton.dataset.day))));
+    chipButton.disabled = !hours.enabled;
+  }
+}
+
+function setHandleValue(handle, minutes) {
+  const value = ((Math.round(minutes / HOURS_STEP) * HOURS_STEP) % 1440 + 1440) % 1440;
+  updateHours(handle === $hoursStartHandle ? { start: value } : { end: value });
+}
+
+for (const handle of [$hoursStartHandle, $hoursEndHandle]) {
+  handle.addEventListener('keydown', event => {
+    const zone = hoursState && getLiveZone(hoursState.tz);
+    if (!zone?.workingHours.enabled) return;
+    const current = Number(handle.getAttribute('aria-valuenow'));
+    const steps = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15, PageUp: 60, PageDown: -60 };
+    if (event.key in steps) { event.preventDefault(); setHandleValue(handle, current + steps[event.key]); }
+    else if (event.key === 'Home') { event.preventDefault(); setHandleValue(handle, 0); }
+    else if (event.key === 'End') { event.preventDefault(); setHandleValue(handle, 1425); }
+  });
+}
+
+// Pointer dragging; pressing the bar itself moves the nearer handle there.
+const $hoursBar = $hoursPopover.querySelector('.hours-bar');
+$hoursBar.addEventListener('pointerdown', event => {
+  const zone = hoursState && getLiveZone(hoursState.tz);
+  if (!zone?.workingHours.enabled) return;
+  const rect = $hoursBar.getBoundingClientRect();
+  const minuteAt = clientX => Math.max(0, Math.min(1440, (clientX - rect.left) / rect.width * 1440));
+  let handle = event.target.closest('.hours-handle');
+  if (!handle) {
+    const minute = minuteAt(event.clientX), hours = zone.workingHours;
+    const distance = value => Math.abs(value - minute);
+    handle = distance(hours.start) <= distance(handlePosition(hours.end, true, hours)) ? $hoursStartHandle : $hoursEndHandle;
+    setHandleValue(handle, minute);
+  }
+  event.preventDefault();
+  handle.focus();
+  handle.classList.add('is-dragging');
+  $hoursBar.setPointerCapture(event.pointerId);
+  const move = moveEvent => setHandleValue(handle, minuteAt(moveEvent.clientX));
+  const stop = () => {
+    handle.classList.remove('is-dragging');
+    $hoursBar.removeEventListener('pointermove', move);
+    $hoursBar.removeEventListener('pointerup', stop);
+    $hoursBar.removeEventListener('pointercancel', stop);
   };
-  enabled.addEventListener('change', update); start.addEventListener('change', update); end.addEventListener('change', update);
-  hours.append(toggle, range, dayPicker);
-  controls.append(hours);
-  return controls;
+  $hoursBar.addEventListener('pointermove', move);
+  $hoursBar.addEventListener('pointerup', stop);
+  $hoursBar.addEventListener('pointercancel', stop);
+});
+
+$hoursEnabled.addEventListener('change', () => updateHours({ enabled: $hoursEnabled.checked }));
+for (const [input, key] of [[$hoursStart, 'start'], [$hoursEnd, 'end']]) {
+  input.addEventListener('change', () => {
+    if (!input.value) { syncHoursPopover(); return; }
+    updateHours({ [key]: parseInputTime(input.value) });
+  });
+}
+byId('hours-close').addEventListener('click', () => closeHoursPopover());
+
+// Sky colors across a day as a CSS gradient; `colorAt` takes an hour (0–24).
+function createDayGradient(colorAt, samples = 48) {
+  const stops = Array.from({ length: samples + 1 }, (_, index) => {
+    const { top, bottom } = colorAt(index * 24 / samples);
+    return `rgb(${lerpColorRound(top, bottom, .5).join(',')}) ${(index / samples * 100).toFixed(2)}%`;
+  });
+  return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
 
 function attachDragHandlers(column) {
+  const clearTargets = () => { for (const item of $columns.children) item.classList.remove('drop-before', 'drop-after'); };
   column.addEventListener('dragstart', event => {
     if (!editMode) { event.preventDefault(); return; }
-    dragTimeZone = column.dataset.tz; column.classList.add('dragging');
+    closeMenu({ restoreFocus: false }); closeHoursPopover({ restoreFocus: false });
+    dragTimeZone = column.dataset.tz; column.classList.add('dragging'); document.body.classList.add('is-dragging');
     event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', dragTimeZone);
   });
   column.addEventListener('dragend', () => {
-    dragTimeZone = null;
-    for (const item of $columns.children) item.classList.remove('dragging', 'drag-target');
+    dragTimeZone = null; document.body.classList.remove('is-dragging');
+    for (const item of $columns.children) item.classList.remove('dragging');
+    clearTargets();
   });
   column.addEventListener('dragover', event => {
     if (!dragTimeZone || dragTimeZone === column.dataset.tz) return;
-    event.preventDefault(); column.classList.add('drag-target');
+    event.preventDefault();
+    // The dragged clock takes this clock's place, landing on the side it came from.
+    const from = config.zones.findIndex(zone => zone.tz === dragTimeZone);
+    const to = config.zones.findIndex(zone => zone.tz === column.dataset.tz);
+    if (!column.classList.contains(from > to ? 'drop-before' : 'drop-after')) {
+      clearTargets(); column.classList.add(from > to ? 'drop-before' : 'drop-after');
+    }
   });
-  column.addEventListener('dragleave', () => column.classList.remove('drag-target'));
+  column.addEventListener('dragleave', event => { if (!column.contains(event.relatedTarget)) column.classList.remove('drop-before', 'drop-after'); });
   column.addEventListener('drop', event => {
     event.preventDefault();
+    clearTargets();
     reorderZone(dragTimeZone, column.dataset.tz);
   });
 }
 
-function createSmoothHorizontalGradient(targetContext, palette, width) {
+function createSmoothHorizontalGradient(targetContext, palette, width, mix = undefined) {
   const gradient = targetContext.createLinearGradient(0, 0, width, 0);
-  for (const stop of getSmoothGradientStops(palette)) {
-    gradient.addColorStop(stop.offset, `rgb(${stop.color.join(',')})`);
+  for (const stop of getSmoothGradientStops(palette, 16, mix)) {
+    const [r, g, b, alpha = 1] = stop.color;
+    gradient.addColorStop(stop.offset, `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${alpha.toFixed(3)})`);
   }
   return gradient;
 }
 
-function paintContinuousGradient(colors, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight) {
-  context.globalCompositeOperation = 'source-over';
-  context.fillStyle = createSmoothHorizontalGradient(context, colors.map(color => color.top), canvasWidth);
-  context.fillRect(0, 0, canvasWidth, canvasHeight);
-
+// Paints a horizontal gradient into the blend canvas, keeps it only where the
+// vertical mask is opaque, and composites the result onto the sky.
+function paintMaskedLayer(fill, maskStops, operation, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight) {
   if (blendCanvas.width !== backingWidth) blendCanvas.width = backingWidth;
   if (blendCanvas.height !== backingHeight) blendCanvas.height = backingHeight;
   blendContext.setTransform(dpr, 0, 0, dpr, 0, 0);
   blendContext.clearRect(0, 0, canvasWidth, canvasHeight);
   blendContext.globalCompositeOperation = 'source-over';
-  blendContext.fillStyle = createSmoothHorizontalGradient(blendContext, colors.map(color => color.bottom), canvasWidth);
+  blendContext.fillStyle = fill;
   blendContext.fillRect(0, 0, canvasWidth, canvasHeight);
   blendContext.globalCompositeOperation = 'destination-in';
-  const verticalMask = blendContext.createLinearGradient(0, 0, 0, canvasHeight);
-  verticalMask.addColorStop(0, 'rgba(0,0,0,0)');
-  verticalMask.addColorStop(1, 'rgba(0,0,0,1)');
-  blendContext.fillStyle = verticalMask;
+  const mask = blendContext.createLinearGradient(0, 0, 0, canvasHeight);
+  for (const [offset, alpha] of maskStops) mask.addColorStop(offset, `rgba(0,0,0,${alpha})`);
+  blendContext.fillStyle = mask;
   blendContext.fillRect(0, 0, canvasWidth, canvasHeight);
   blendContext.globalCompositeOperation = 'source-over';
+  context.globalCompositeOperation = operation;
   context.drawImage(blendCanvas, 0, 0, backingWidth, backingHeight, 0, 0, canvasWidth, canvasHeight);
+  context.globalCompositeOperation = 'source-over';
+}
+
+// Smoothstep keeps the 50% mix at mid-height, where text contrast is measured,
+// while holding the zenith and horizon colors longer than a linear ramp.
+const SKY_BLEND_MASK = [[0, 0], [0.25, 0.156], [0.5, 0.5], [0.75, 0.844], [1, 1]];
+// Twilight deepens the top of the sky and lights the horizon; both stay clear
+// of the clock text in the middle of the screen.
+const ZENITH_MASK = [[0, 1], [0.18, 0.55], [0.38, 0]];
+const HORIZON_MASK = [[0.6, 0], [0.8, 0.45], [0.93, 0.85], [1, 1]];
+const ZENITH_COLOR = [20, 22, 70];
+
+function paintContinuousGradient(skies, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight) {
+  context.globalCompositeOperation = 'source-over';
+  context.fillStyle = createSmoothHorizontalGradient(context, skies.map(sky => sky.top), canvasWidth);
+  context.fillRect(0, 0, canvasWidth, canvasHeight);
+  const layer = (palette, mask, operation) => paintMaskedLayer(
+    createSmoothHorizontalGradient(blendContext, palette, canvasWidth, mixColorAlpha),
+    mask, operation, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight);
+  layer(skies.map(sky => [...sky.bottom, 1]), SKY_BLEND_MASK, 'source-over');
+  if (skies.some(sky => sky.twilight > 0.02)) {
+    layer(skies.map(sky => [...ZENITH_COLOR, sky.twilight * 0.3]), ZENITH_MASK, 'source-over');
+  }
+  if (skies.some(sky => sky.horizonAlpha > 0.01)) {
+    layer(skies.map(sky => [...sky.horizon, sky.horizonAlpha]), HORIZON_MASK, 'screen');
+  }
+}
+
+// A fixed star field, denser toward the zenith. Each star takes the night
+// value interpolated between the clock columns on either side of it.
+let starField = null;
+function getStarField(canvasWidth, canvasHeight) {
+  const key = `${canvasWidth}x${canvasHeight}`;
+  if (starField?.key === key) return starField.stars;
+  let seed = 0x2f6b9a1d;
+  const random = () => { seed = Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x297a2d39 | 0; return ((seed >>> 0) % 100000) / 100000; };
+  const count = Math.min(520, Math.round(canvasWidth * canvasHeight / 4200));
+  const stars = Array.from({ length: count }, () => ({
+    x: random() * canvasWidth,
+    y: random() ** 1.7 * canvasHeight * 0.74,
+    radius: 0.35 + random() ** 3 * 1.05,
+    brightness: 0.25 + random() * 0.75,
+    warm: random() < 0.18,
+  }));
+  starField = { key, stars };
+  return stars;
+}
+
+function paintStars(skies, canvasWidth, canvasHeight, columnWidth) {
+  if (!skies.some(sky => sky.night > 0.02)) return;
+  const nightAt = x => {
+    const position = Math.max(0, Math.min(skies.length - 1, x / columnWidth - 0.5));
+    const index = Math.floor(position), next = Math.min(skies.length - 1, index + 1);
+    return skies[index].night + (skies[next].night - skies[index].night) * (position - index);
+  };
+  for (const star of getStarField(canvasWidth, canvasHeight)) {
+    const alpha = nightAt(star.x) * star.brightness * (1 - star.y / (canvasHeight * 0.8)) * 0.85;
+    if (alpha < 0.03) continue;
+    context.fillStyle = star.warm ? `rgba(255,226,196,${alpha.toFixed(3)})` : `rgba(226,232,255,${alpha.toFixed(3)})`;
+    context.beginPath(); context.arc(star.x, star.y, star.radius, 0, Math.PI * 2); context.fill();
+  }
 }
 
 function applyGradientDither(backingWidth, backingHeight) {
@@ -520,6 +908,45 @@ function applyGradientDither(backingWidth, backingHeight) {
   context.restore();
 }
 
+function getPaletteHour(timeZone, time, date, fractionalMinute = time.minute24) {
+  return config.visualTheme === 'solar'
+    ? getSolarPaletteHour(timeZone, coordinates[timeZone], date)
+    : time.hour24 + fractionalMinute / 60;
+}
+
+function getSky(timeZone, time, date, fractionalMinute = time.minute24) {
+  const paletteHour = getPaletteHour(timeZone, time, date, fractionalMinute);
+  const minutes = Math.round(paletteHour * 60) % 1440;
+  return { ...getGradientColors(Math.floor(minutes / 60), minutes % 60), ...getSkyLight(paletteHour) };
+}
+
+// Paints the full sky for a list of columns: the dashboard, or the sample
+// world shown behind onboarding.
+function paintSky(skies, canvasWidth, canvasHeight, homeIndex = -1) {
+  const dpr = Math.min(devicePixelRatio || 1, MAX_CANVAS_PIXEL_RATIO);
+  const columnWidth = canvasWidth / skies.length;
+  const backingWidth = Math.round(canvasWidth * dpr), backingHeight = Math.round(canvasHeight * dpr);
+  if ($canvas.width !== backingWidth) $canvas.width = backingWidth;
+  if ($canvas.height !== backingHeight) $canvas.height = backingHeight;
+  $canvas.style.width = `${canvasWidth}px`; $canvas.style.height = `${canvasHeight}px`;
+  context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, canvasWidth, canvasHeight);
+  paintContinuousGradient(skies, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight);
+  paintStars(skies, canvasWidth, canvasHeight, columnWidth);
+  context.globalCompositeOperation = 'lighter';
+  skies.forEach(({ top, bottom }, index) => {
+    const centerX = (index + .5) * columnWidth, centerY = canvasHeight * .45;
+    const middle = lerpColorRound(top, bottom, .5);
+    const bright = lerpColorRound(middle, [255,255,255], .35);
+    const alpha = index === homeIndex ? .06 : .035;
+    const radius = Math.max(columnWidth * .7, canvasHeight * .3);
+    const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+    glow.addColorStop(0, `rgba(${bright.join(',')},${alpha})`); glow.addColorStop(.5, `rgba(${bright.join(',')},${alpha * .4})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    context.fillStyle = glow; context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+  });
+  context.globalCompositeOperation = 'source-over';
+  applyGradientDither(backingWidth, backingHeight);
+}
+
 function updateDisplay() {
   const columnElements = [...$columns.querySelectorAll('.tz-column')];
   if (!columnElements.length) return;
@@ -530,7 +957,6 @@ function updateDisplay() {
   const dpr = Math.min(devicePixelRatio || 1, MAX_CANVAS_PIXEL_RATIO);
   const columnWidth = canvasWidth / count;
   $columns.style.width = `${canvasWidth}px`;
-  $canvas.style.width = `${canvasWidth}px`; $canvas.style.height = `${canvasHeight}px`;
 
   const times = [], colors = [], offsets = [];
   for (const column of columnElements) {
@@ -538,33 +964,15 @@ function updateDisplay() {
     const time = getTimeInZone(timeZone, date);
     times.push(time); offsets.push(getOffsetMinutes(timeZone, date));
     const fractionalMinute = time.minute24 + (config.atmosphericMotion && viewedOffsetMinutes === 0 ? Number(time.second) / 60 : 0);
-    colors.push(config.visualTheme === 'solar'
-      ? getSolarGradientColors(timeZone, coordinates[timeZone], date)
-      : getGradientColors(time.hour24, fractionalMinute));
+    colors.push(getSky(timeZone, time, date, fractionalMinute));
   }
 
   const canvasKey = `${Math.floor(date.getTime() / (config.atmosphericMotion && viewedOffsetMinutes === 0 ? 5000 : 60000))}:${canvasWidth}:${canvasHeight}:${dpr}:${config.visualTheme}`;
   // A zero-height viewport (background or minimized tab) makes drawImage throw; repaint on resize.
-  if (canvasKey !== lastCanvasKey && canvasHeight > 0) {
+  // Onboarding keeps the sky of the whole world behind it until it finishes.
+  if (canvasKey !== lastCanvasKey && canvasHeight > 0 && $firstRunModal.classList.contains('hidden')) {
     lastCanvasKey = canvasKey;
-    const backingWidth = Math.round(canvasWidth * dpr), backingHeight = Math.round(canvasHeight * dpr);
-    if ($canvas.width !== backingWidth) $canvas.width = backingWidth;
-    if ($canvas.height !== backingHeight) $canvas.height = backingHeight;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, canvasWidth, canvasHeight);
-    paintContinuousGradient(colors, canvasWidth, canvasHeight, dpr, backingWidth, backingHeight);
-    context.globalCompositeOperation = 'lighter';
-    colors.forEach(({ top, bottom }, index) => {
-      const centerX = (index + .5) * columnWidth, centerY = canvasHeight * .45;
-      const middle = lerpColorRound(top, bottom, .5);
-      const bright = lerpColorRound(middle, [255,255,255], .35);
-      const alpha = columnElements[index].classList.contains('is-home') ? .06 : .035;
-      const radius = Math.max(columnWidth * .7, canvasHeight * .3);
-      const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      glow.addColorStop(0, `rgba(${bright.join(',')},${alpha})`); glow.addColorStop(.5, `rgba(${bright.join(',')},${alpha * .4})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
-      context.fillStyle = glow; context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
-    });
-    context.globalCompositeOperation = 'source-over';
-    applyGradientDither(backingWidth, backingHeight);
+    paintSky(colors, canvasWidth, canvasHeight, columnElements.findIndex(column => column.classList.contains('is-home')));
   }
 
   const homeOffset = config.home ? getOffsetMinutes(config.home.tz, date) : null;
@@ -573,19 +981,17 @@ function updateDisplay() {
     const timeZone = column.dataset.tz, time = times[index], color = colors[index];
     const textColor = getTextColor(color.top, color.bottom); column.style.color = textColor;
     column.dataset.tone = textColor === 'rgb(0, 0, 0)' ? 'light' : 'dark';
+    column.dataset.night = color.night.toFixed(2);
     const timeElement = column.querySelector('.time-display'); timeElement.style.fontSize = `${timeSize}px`;
-    const hour = config.use24h ? String(time.hour24).padStart(2, '0') : time.hour12;
-    const timeParts = [document.createTextNode(`${hour}:${time.minute}`)];
-    if (config.showSeconds) {
-      const seconds = document.createElement('span');
-      seconds.className = 'seconds'; seconds.textContent = `:${time.second}`; timeParts.push(seconds);
-    }
-    if (!config.use24h) {
-      const period = document.createElement('span');
-      period.className = 'ampm'; period.textContent = time.ampm; timeParts.push(period);
-    }
-    timeElement.replaceChildren(...timeParts);
-    column.querySelector('.date-display').textContent = time.dateLabel;
+    setRolling(timeElement.querySelector('.time-hours'), config.use24h ? String(time.hour24).padStart(2, '0') : String(time.hour12));
+    setRolling(timeElement.querySelector('.time-minutes'), time.minute);
+    const seconds = timeElement.querySelector('.seconds'), period = timeElement.querySelector('.ampm');
+    seconds.hidden = !config.showSeconds; seconds.textContent = config.showSeconds ? `:${time.second}` : '';
+    period.hidden = config.use24h; period.textContent = config.use24h ? '' : time.ampm;
+    setRolling(column.querySelector('.date-display'), time.dateLabel);
+    // A brief celebration in each city as it reaches the new year.
+    const parts = getZonedDateParts(timeZone, date);
+    column.classList.toggle('is-new-year', parts.month === 1 && parts.day === 1 && parts.hour === 0 && parts.minute < 15);
     const relative = homeOffset === null ? '' : formatRelativeOffset(offsets[index], homeOffset);
     column.querySelector('.tz-info').textContent = relative || (config.home?.tz === timeZone ? t('homeTimezone') : t('sameAsHome'));
     const transition = getTransition(timeZone, date);
@@ -601,8 +1007,33 @@ function updateDisplay() {
   });
 
   document.body.classList.toggle('density-compact', config.infoDensity === 'compact');
+  document.body.classList.toggle('motion-on', config.atmosphericMotion);
+  document.body.classList.toggle('show-seconds', config.showSeconds);
+  document.body.classList.toggle('time-traveling', viewedOffsetMinutes > 0);
+  $skyEvents.style.width = `${canvasWidth}px`;
+  const homeIndex = columnElements.findIndex(column => column.classList.contains('is-home'));
+  if (homeIndex >= 0 && !viewedOffsetMinutes) updateTabIdentity(colors[homeIndex], date);
   updatePlanner(date);
   updateScrollHints();
+}
+
+// The tab shows the home time and a small disc of the home sky.
+let faviconKey = '';
+function updateTabIdentity(sky, date) {
+  document.title = `${formatClock(date, config.home.tz)} · ${t('extensionName')}`;
+  const [top, bottom] = [sky.top, sky.bottom].map(color => color.map(Math.round));
+  const key = `${top}|${bottom}`;
+  if (key === faviconKey || !$favicon) return;
+  faviconKey = key;
+  const icon = document.createElement('canvas'); icon.width = icon.height = 32;
+  const iconContext = icon.getContext('2d');
+  const fill = iconContext.createLinearGradient(0, 2, 0, 30);
+  fill.addColorStop(0, `rgb(${top})`); fill.addColorStop(1, `rgb(${bottom})`);
+  iconContext.beginPath(); iconContext.arc(16, 16, 14.5, 0, Math.PI * 2);
+  iconContext.fillStyle = fill; iconContext.fill();
+  iconContext.lineWidth = 1.5; iconContext.strokeStyle = 'rgba(255,255,255,.55)'; iconContext.stroke();
+  $favicon.removeAttribute('sizes');
+  $favicon.href = icon.toDataURL('image/png');
 }
 
 function updatePlanner(date) {
@@ -613,7 +1044,10 @@ function updatePlanner(date) {
   $plannerTime.textContent = homeTime;
   $plannerOffset.textContent = ahead;
   $timeSlider.setAttribute('aria-valuetext', ahead ? `${homeTime} (${ahead})` : `${t('now')}, ${homeTime}`);
-  renderTimelineDays();
+  $travelChip.classList.toggle('hidden', !ahead);
+  if (ahead) $travelChipText.textContent = `${t('plannedTime')} · ${ahead}`;
+  $planner.style.setProperty('--progress', String(viewedOffsetMinutes / PLANNER_RANGE_MINUTES));
+  renderTimeline();
   updateAvailabilitySummary(date, now);
 }
 
@@ -659,25 +1093,55 @@ function formatWeekday(date, timeZone) {
   return weekdayFormatterCache.get(key).format(date);
 }
 
-// Day markers sit at home-timezone midnights; the track spans the thumb's
-// travel, which is inset by half its 16px width at each end.
-function renderTimelineDays() {
+// The planner track is the home sky across the next 48 hours, with each
+// home-timezone midnight marked and the shared-availability windows lit.
+// Everything sits inside the thumb's travel, inset by half its 16px width.
+let timelineWindowsKey = '';
+function renderTimeline() {
   const origin = viewedOffsetMinutes ? planningOrigin : floorToStep(Date.now());
-  const key = `${config.home.tz}:${origin}:${currentLocale}`;
-  if (key === timelineKey) return;
-  timelineKey = key;
-  const mark = (fraction, label, className) => {
+  const key = `${config.home.tz}:${origin}:${currentLocale}:${config.visualTheme}`;
+  if (key !== timelineKey) {
+    timelineKey = key;
+    const samples = 96;
+    const colors = Array.from({ length: samples + 1 }, (_, index) => {
+      const at = new Date(origin + index * PLANNER_RANGE_MINUTES / samples * 60000);
+      const { top, bottom } = getSky(config.home.tz, getTimeInZone(config.home.tz, at), at);
+      return lerpColorRound(top, bottom, .5).join(',');
+    });
+    $timelineSky.style.background = `linear-gradient(90deg, ${colors.map((color, index) => `rgb(${color}) ${(index / samples * 100).toFixed(2)}%`).join(', ')})`;
+    $timelineTrack.style.setProperty('--start-color', `rgb(${colors[0]})`);
+    $timelineTrack.style.setProperty('--end-color', `rgb(${colors.at(-1)})`);
+
+    const mark = (fraction, label, className) => {
+      const element = document.createElement('span');
+      element.className = `timeline-mark ${className}`;
+      element.style.setProperty('--position', String(fraction));
+      element.textContent = label;
+      return element;
+    };
+    const days = getDayStarts(config.home.tz, origin, PLANNER_RANGE_MINUTES)
+      .map(({ minutes, at }) => ({ fraction: minutes / PLANNER_RANGE_MINUTES, label: formatWeekday(at, config.home.tz) }));
+    const marks = days.map(({ fraction, label }) => mark(fraction, label, fraction > 0.92 ? 'is-day is-end' : 'is-day'));
+    if (!days.length || days[0].fraction > 0.08) marks.unshift(mark(0, t('now'), 'is-now'));
+    $timelineDays.replaceChildren(...marks);
+    $timelineTicks.replaceChildren(...days.map(({ fraction }) => {
+      const tick = document.createElement('span'); tick.className = 'timeline-tick'; tick.style.left = `${fraction * 100}%`; return tick;
+    }));
+  }
+
+  const schedules = config.availabilityEnabled ? JSON.stringify(config.zones.map(zone => [zone.tz, zone.workingHours])) : '';
+  const windowsKey = `${origin}:${schedules}`;
+  if (windowsKey === timelineWindowsKey) return;
+  timelineWindowsKey = windowsKey;
+  const range = PLANNER_RANGE_MINUTES * 60000;
+  const windows = config.availabilityEnabled ? findAvailabilityWindows(config.zones, new Date(origin)) : [];
+  $timelineWindows.replaceChildren(...windows.map(window => {
+    const start = Math.max(0, (window.start - origin) / range), end = Math.min(1, (window.end - origin) / range);
     const element = document.createElement('span');
-    element.className = `timeline-mark ${className}`;
-    element.style.setProperty('--position', String(fraction));
-    element.textContent = label;
+    element.className = 'timeline-window';
+    element.style.left = `${start * 100}%`; element.style.width = `${(end - start) * 100}%`;
     return element;
-  };
-  const days = getDayStarts(config.home.tz, origin, PLANNER_RANGE_MINUTES)
-    .map(({ minutes, at }) => ({ fraction: minutes / PLANNER_RANGE_MINUTES, label: formatWeekday(at, config.home.tz) }));
-  const marks = days.map(({ fraction, label }) => mark(fraction, label, fraction > 0.92 ? 'is-day is-end' : 'is-day'));
-  if (!days.length || days[0].fraction > 0.08) marks.unshift(mark(0, t('now'), 'is-now'));
-  $timelineDays.replaceChildren(...marks);
+  }).filter(element => parseFloat(element.style.width) > 0));
 }
 
 function setViewedOffset(minutes) {
@@ -713,7 +1177,19 @@ function addZone(city, country, timeZone) {
       workingHours: { ...DEFAULT_WORKING_HOURS },
     });
   }
-  saveConfig(); renderColumns(); return true;
+  saveConfig(); renderColumns({ animate: true }); highlightColumn(timeZone); return true;
+}
+
+// Brings a clock into view and rings it briefly, so an addition is never missed.
+function highlightColumn(timeZone) {
+  const column = $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`);
+  if (!column) return;
+  const rect = column.getBoundingClientRect();
+  if (rect.left < 0 || rect.right > innerWidth) {
+    $dashboard.scrollBy({ left: rect.left < 0 ? rect.left - 24 : rect.right - innerWidth + 24, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  }
+  column.classList.remove('is-arriving'); void column.offsetWidth; column.classList.add('is-arriving');
+  setTimeout(() => column.classList.remove('is-arriving'), 2000);
 }
 
 // Re-rendering replaces every column, so restore focus explicitly.
@@ -728,18 +1204,30 @@ function removeZone(timeZone) {
   const index = config.zones.findIndex(zone => zone.tz === timeZone);
   if (index < 0) return;
   const [removed] = config.zones.splice(index, 1);
-  saveConfig(); renderColumns();
+  rememberRemoved(removed);
+  saveConfig(); renderColumns({ animate: true });
   const neighbor = config.zones[Math.min(index, config.zones.length - 1)];
-  if (neighbor) focusColumn(neighbor.tz, '[data-action="remove"]');
+  if (neighbor) focusColumn(neighbor.tz, '[data-action="more"]');
   showToast(t('timezoneRemoved', removed.cities.map(getLocalizedCityName).join(', ')), {
     label: t('undo'),
     run: () => {
       if (config.zones.some(zone => zone.tz === removed.tz)) return;
       if (config.zones.length >= MAX_TIMEZONES) { showToast(t('maxTimezones')); return; }
-      config.zones.splice(Math.min(index, config.zones.length), 0, removed); saveConfig(); renderColumns();
-      focusColumn(removed.tz, '[data-action="remove"]');
+      config.zones.splice(Math.min(index, config.zones.length), 0, removed); saveConfig(); renderColumns({ animate: true });
+      focusColumn(removed.tz, '[data-action="more"]');
     },
   });
+}
+
+// Search suggests clocks removed earlier in this tab.
+const recentlyRemoved = [];
+function rememberRemoved(zone) {
+  for (const city of [...zone.cities].reverse()) {
+    const index = recentlyRemoved.findIndex(item => item.tz === zone.tz);
+    if (index >= 0) recentlyRemoved.splice(index, 1);
+    recentlyRemoved.unshift({ ...city, tz: zone.tz });
+  }
+  recentlyRemoved.length = Math.min(recentlyRemoved.length, 3);
 }
 
 function setHome(city, country, timeZone, announce = false) {
@@ -748,8 +1236,8 @@ function setHome(city, country, timeZone, announce = false) {
   config.home = { city, country, tz: timeZone };
   if (!existing) config.zones = addZoneByUtcOffset(config.zones, { tz: timeZone, cities: [{ city, country }], workingHours: { ...DEFAULT_WORKING_HOURS } });
   else if (!existing.cities.some(item => item.city === city && item.country === country)) existing.cities.unshift({ city, country });
-  saveConfig(); renderColumns();
-  if (announce) { showToast(t('homeChanged', getLocalizedCityName({ city, country }))); focusColumn(timeZone, '[data-action="group"]'); }
+  saveConfig(); renderColumns({ animate: announce });
+  if (announce) { showToast(t('homeChanged', getLocalizedCityName({ city, country }))); focusColumn(timeZone, '[data-action="more"]'); highlightColumn(timeZone); }
   return true;
 }
 
@@ -757,7 +1245,7 @@ function moveZone(timeZone, direction, focusSelector = null) {
   const index = config.zones.findIndex(zone => zone.tz === timeZone), target = index + direction;
   if (index < 0 || target < 0 || target >= config.zones.length) return;
   [config.zones[index], config.zones[target]] = [config.zones[target], config.zones[index]];
-  saveConfig(); renderColumns();
+  saveConfig(); renderColumns({ animate: true });
   if (focusSelector) focusColumn(timeZone, focusSelector);
   else $columns.querySelector(`[data-tz="${CSS.escape(timeZone)}"]`)?.focus();
 }
@@ -767,7 +1255,7 @@ function reorderZone(sourceTimeZone, targetTimeZone) {
   const to = config.zones.findIndex(zone => zone.tz === targetTimeZone);
   if (from < 0 || to < 0 || from === to) return;
   const [zone] = config.zones.splice(from, 1); config.zones.splice(to, 0, zone);
-  saveConfig(); renderColumns();
+  saveConfig(); renderColumns({ animate: true });
 }
 
 function addDefaultZones() {
@@ -889,6 +1377,27 @@ function renderPresets() {
   }
   $presetSelect.value = config.activePresetId || '';
   byId('delete-preset-btn').disabled = !config.activePresetId;
+  renderPresetSwitcher();
+}
+
+// Once presets exist, a switcher beside the toolbar changes between them.
+function renderPresetSwitcher() {
+  $presetSwitcher.classList.toggle('hidden', !config.presets.length);
+  const active = config.presets.find(preset => preset.id === config.activePresetId);
+  $presetSwitcherName.textContent = active ? active.name : t('currentClocks');
+}
+
+function openPresetMenu() {
+  if (openMenuState?.anchor === $presetSwitcherBtn) { closeMenu(); return; }
+  closeSettings();
+  openMenu($presetMenu, $presetSwitcherBtn, [
+    ...config.presets.map((preset, index) => ({
+      label: preset.name, checked: preset.id === config.activePresetId, hint: index < 9 ? String(index + 1) : '',
+      run: () => { if (preset.id !== config.activePresetId) activatePreset(preset.id); $presetSwitcherBtn.focus(); },
+    })),
+    { separator: true },
+    { label: t('managePresets'), run: () => { openSettings(); $presetName.focus(); } },
+  ], 'below');
 }
 
 function savePreset() {
@@ -912,12 +1421,12 @@ function activatePreset(id) {
   const previous = config;
   const storageMode = config.storageMode, presets = config.presets;
   config = normalizeConfig({ ...createPresetSnapshot(preset), presets, activePresetId: id, storageMode, onboardingComplete: true });
-  saveConfig(); renderColumns(); syncSettingsControls();
+  saveConfig(); renderColumns({ animate: true }); syncSettingsControls();
   showToast(t('presetLoaded', preset.name), {
     label: t('undo'),
     run: () => {
       config = normalizeConfig({ ...previous, presets: config.presets, storageMode: config.storageMode });
-      saveConfig(); renderColumns(); syncSettingsControls();
+      saveConfig(); renderColumns({ animate: true }); syncSettingsControls();
     },
   });
 }
@@ -1013,16 +1522,33 @@ function searchCities(query) {
   return searchEntries(searchIndex, query);
 }
 
+function createSkyDot(timeZone, date = new Date(), className = 'sky-dot') {
+  const { top, bottom } = getSky(timeZone, getTimeInZone(timeZone, date), date);
+  const dot = document.createElement('span');
+  dot.className = className; dot.setAttribute('aria-hidden', 'true');
+  dot.style.background = `linear-gradient(rgb(${top.map(Math.round)}), rgb(${bottom.map(Math.round)}))`;
+  return dot;
+}
+
+// `results` may include { heading } entries, which label the options after them.
 function renderSearchResults(results, list, onSelect) {
   list.replaceChildren(); searchSelectedIndex = -1;
   const input = list === $homeResults ? $homeSearch : $searchInput;
   const empty = list === $homeResults ? $homeEmpty : $searchEmpty;
-  input.removeAttribute('aria-activedescendant'); input.setAttribute('aria-expanded', String(results.length > 0));
-  empty.textContent = results.length || !input.value.trim() ? '' : t('noSearchResults');
+  const options = results.filter(result => !result.heading);
+  input.removeAttribute('aria-activedescendant'); input.setAttribute('aria-expanded', String(options.length > 0));
+  empty.textContent = options.length || !input.value.trim() ? '' : t('noSearchResults');
   const now = new Date();
   const homeOffset = config.home ? getOffsetMinutes(config.home.tz, now) : null;
-  results.forEach((city, index) => {
-    const item = document.createElement('li'); item.id = `${list.id}-option-${index}`; item.role = 'option'; item.ariaSelected = 'false';
+  let index = 0;
+  for (const city of results) {
+    if (city.heading) {
+      const heading = document.createElement('li');
+      heading.className = 'result-group'; heading.role = 'presentation'; heading.ariaHidden = 'true'; heading.textContent = city.heading;
+      list.append(heading);
+      continue;
+    }
+    const item = document.createElement('li'); item.id = `${list.id}-option-${index++}`; item.role = 'option'; item.ariaSelected = 'false';
     const name = document.createElement('span'); name.className = 'city-name'; name.textContent = `${getLocalizedCityName(city)}, ${getCountryName(city.country)}`;
     const meta = document.createElement('span'); meta.className = 'city-meta';
     const time = document.createElement('span'); time.className = 'city-time';
@@ -1030,10 +1556,32 @@ function renderSearchResults(results, list, onSelect) {
     time.textContent = relative ? `${formatClock(now, city.tz)} \u00b7 ${relative}` : formatClock(now, city.tz);
     const zone = document.createElement('span'); zone.className = 'city-tz'; zone.textContent = city.tz;
     meta.append(time, zone);
-    item.append(name, meta); item.addEventListener('click', () => onSelect(city)); list.append(item);
-  });
+    item.append(createSkyDot(city.tz, now), name, meta); item.addEventListener('click', () => onSelect(city)); list.append(item);
+  }
   // Highlight the best match so Enter picks it without arrowing first.
-  if (results.length) navigateResults(list, 'down');
+  if (options.length) navigateResults(list, 'down');
+}
+
+const SUGGESTED_CITIES = [
+  ['Europe/London', 'London'], ['America/New_York', 'New York'], ['Asia/Tokyo', 'Tokyo'], ['Asia/Singapore', 'Singapore'],
+  ['Australia/Sydney', 'Sydney'], ['Asia/Dubai', 'Dubai'], ['Asia/Kolkata', 'Mumbai'], ['America/Sao_Paulo', 'Sao Paulo'],
+  ['Europe/Paris', 'Paris'], ['America/Los_Angeles', 'Los Angeles'], ['Asia/Hong_Kong', 'Hong Kong'], ['America/Chicago', 'Chicago'],
+];
+
+// Before anything is typed, search offers recently removed clocks and a few
+// major cities that are not on screen yet.
+function getSearchSuggestions() {
+  const present = new Set(config.zones.map(zone => zone.tz));
+  const recent = recentlyRemoved.filter(city => !present.has(city.tz));
+  const shown = new Set(recent.map(city => city.tz));
+  const popular = SUGGESTED_CITIES
+    .filter(([tz]) => !present.has(tz) && !shown.has(tz))
+    .map(([tz, city]) => getRepresentativeCity(cities, tz, city))
+    .filter(Boolean).slice(0, 6 - Math.min(recent.length, 3));
+  return [
+    ...(recent.length ? [{ heading: t('recentlyRemoved') }, ...recent] : []),
+    ...(popular.length ? [{ heading: t('suggestions') }, ...popular] : []),
+  ];
 }
 
 function clearSearchResults(list) {
@@ -1042,14 +1590,14 @@ function clearSearchResults(list) {
 }
 
 function navigateResults(list, direction) {
-  const items = [...list.querySelectorAll('li')]; if (!items.length) return;
+  const items = [...list.querySelectorAll('li[role="option"]')]; if (!items.length) return;
   searchSelectedIndex = direction === 'down' ? Math.min(searchSelectedIndex + 1, items.length - 1) : Math.max(searchSelectedIndex - 1, 0);
   items.forEach((item, index) => { item.classList.toggle('selected', index === searchSelectedIndex); item.ariaSelected = String(index === searchSelectedIndex); });
   const input = list === $homeResults ? $homeSearch : $searchInput;
   input.setAttribute('aria-activedescendant', items[searchSelectedIndex].id); items[searchSelectedIndex].scrollIntoView({ block: 'nearest' });
 }
 
-function selectCurrentResult(list) { const items = list.querySelectorAll('li'); items[searchSelectedIndex]?.click(); }
+function selectCurrentResult(list) { const items = list.querySelectorAll('li[role="option"]'); items[searchSelectedIndex]?.click(); }
 
 function setPageInert(inert) {
   for (const element of [$dashboard, $toolbar, $planner, $settingsPanel, $scrollLeft, $scrollRight]) element.inert = inert;
@@ -1069,10 +1617,26 @@ function openSearch(mode = 'add', returnFocus = document.activeElement, targetTi
   $searchInput.placeholder = mode === 'home' ? t('searchYourCity') : t('searchCityOrTimezone');
   $searchMultiFooter.classList.toggle('hidden', mode !== 'onboarding');
   updateMultiAddStatus();
+  closeMenu({ restoreFocus: false }); closeHoursPopover({ restoreFocus: false });
   $searchOverlay.classList.remove('hidden'); setPageInert(true);
-  $searchInput.value = ''; clearSearchResults($searchResults); $searchInput.ariaExpanded = 'false';
-  setTimeout(() => $searchInput.focus(), 40);
+  // Focus at once so the first keystrokes are never lost.
+  $searchInput.value = ''; $searchInput.focus();
+  showSearchSuggestions();
   warmSearchIndex();
+}
+
+function showSearchSuggestions() {
+  if (searchMode === 'add' || searchMode === 'onboarding') renderSearchResults(getSearchSuggestions(), $searchResults, selectSearchResult);
+  else { clearSearchResults($searchResults); $searchInput.ariaExpanded = 'false'; }
+}
+
+function selectSearchResult(city) {
+  if (searchMode === 'home') { if (setHome(city.city, city.country, city.tz, true)) closeSearch(); return; }
+  const added = addZone(city.city, city.country, city.tz);
+  if (searchMode === 'onboarding') {
+    if (added) showToast(t('timezoneAdded', getLocalizedCityName(city)));
+    $searchInput.value = ''; showSearchSuggestions(); updateMultiAddStatus(); $searchInput.focus();
+  } else closeSearch();
 }
 
 function updateMultiAddStatus() {
@@ -1087,7 +1651,7 @@ function closeSearch() {
   $searchInput.ariaExpanded = 'false'; $searchInput.removeAttribute('aria-activedescendant');
   // Adding a city re-renders the columns, detaching the button that opened search.
   const fallback = searchTargetTimeZone
-    ? $columns.querySelector(`[data-tz="${CSS.escape(searchTargetTimeZone)}"] [data-action="group"]`)
+    ? $columns.querySelector(`[data-tz="${CSS.escape(searchTargetTimeZone)}"] [data-action="more"]`)
     : $addBtn;
   (searchReturnFocus?.isConnected ? searchReturnFocus : fallback)?.focus?.();
   searchReturnFocus = null;
@@ -1104,7 +1668,7 @@ function showGoalStep() {
 // back clears it rather than leaving the first choice behind as a column.
 function returnToHomeStep() {
   config.home = null; config.zones = [];
-  saveConfig(); renderColumns();
+  saveConfig(); renderColumns(); paintOnboardingSky();
   $onboardingGoalStep.classList.add('hidden'); $onboardingHomeStep.classList.remove('hidden');
   $homeSearch.value = ''; clearSearchResults($homeResults); $homeSearch.ariaExpanded = 'false';
   $homeSearch.focus();
@@ -1113,18 +1677,41 @@ function returnToHomeStep() {
 function finishOnboarding(goal) {
   config.onboardingComplete = true;
   if (goal === 'sample') addDefaultZones(); else saveConfig();
-  $firstRunModal.classList.add('hidden'); setPageInert(false); renderColumns(); startTimer();
+  // The clocks rise out of the world sky.
+  const snapshot = captureLayout();
+  $firstRunModal.classList.add('hidden'); setPageInert(false); renderColumns(); playLayout(snapshot); startTimer();
   if (goal === 'people') openSearch('onboarding', byId('add-btn'));
+}
+
+// Behind onboarding, the sky over a band of cities around the world right now.
+const ONBOARDING_SKY_ZONES = [
+  'Pacific/Honolulu', 'America/Los_Angeles', 'America/New_York', 'America/Sao_Paulo', 'Europe/London', 'Europe/Berlin',
+  'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney',
+];
+function paintOnboardingSky() {
+  if (!innerHeight) return;
+  const date = new Date();
+  const zones = sortZonesByUtcOffset(ONBOARDING_SKY_ZONES.map(tz => ({ tz })), date);
+  $columns.style.width = `${innerWidth}px`;
+  paintSky(zones.map(({ tz }) => getSky(tz, getTimeInZone(tz, date), date)), innerWidth, innerHeight);
 }
 
 function showFirstRun() {
   $firstRunModal.classList.remove('hidden'); setPageInert(true);
+  paintOnboardingSky();
   const systemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const detected = getRepresentativeCity(cities, systemTimeZone);
   $homeDetected.replaceChildren();
   if (detected) {
-    const button = document.createElement('button'); button.type = 'button';
-    button.textContent = t('useDetectedLocation', [getLocalizedCityName(detected), getCountryName(detected.country), detected.tz]);
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'detected-chip'; button.id = 'detected-home';
+    button.setAttribute('aria-label', t('useDetectedLocation', [getLocalizedCityName(detected), getCountryName(detected.country), detected.tz]));
+    const text = document.createElement('span'); text.className = 'detected-text';
+    const name = document.createElement('strong'); name.textContent = `${getLocalizedCityName(detected)}, ${getCountryName(detected.country)}`;
+    const hint = document.createElement('span'); hint.textContent = t('detectedHomeHint');
+    text.append(name, hint);
+    const time = document.createElement('span'); time.className = 'detected-time'; time.textContent = formatClock(new Date(), detected.tz);
+    const enter = document.createElement('kbd'); enter.textContent = '↵';
+    button.append(createSkyDot(detected.tz, new Date(), 'sky-dot large'), text, time, enter);
     button.addEventListener('click', () => { setHome(detected.city, detected.country, detected.tz); showGoalStep(); });
     $homeDetected.append(button);
   } else {
@@ -1175,6 +1762,7 @@ function setAvailability(enabled) {
 }
 
 function openSettings() {
+  closeMenu({ restoreFocus: false }); closeHoursPopover({ restoreFocus: false });
   $settingsPanel.classList.remove('hidden'); $settingsBtn.ariaExpanded = 'true'; syncSettingsControls();
 }
 
@@ -1185,10 +1773,30 @@ function closeSettings({ restoreFocus = false } = {}) {
 
 function syncSettingsControls() {
   $toggle24h.checked = config.use24h; $toggleSeconds.checked = config.showSeconds; $toggleMotion.checked = config.atmosphericMotion;
-  $densitySelect.value = config.infoDensity; $themeSelect.value = config.visualTheme; $storageSelect.value = config.storageMode;
+  for (const input of $densityInputs) input.checked = input.value === config.infoDensity;
+  for (const input of $themeInputs) input.checked = input.value === config.visualTheme;
+  $storageSelect.value = config.storageMode;
+  renderSettingsHome();
   $availabilityToggle.checked = config.availabilityEnabled; $settingsAvailability.checked = config.availabilityEnabled;
   document.body.classList.toggle('availability-mode', config.availabilityEnabled);
   renderPresets();
+}
+
+// Settings opens with the home city, its sky, and a preview of each theme.
+function renderSettingsHome() {
+  if (!config.home || $settingsPanel.classList.contains('hidden')) return;
+  const now = new Date(), { tz } = config.home;
+  byId('settings-home-name').textContent = getLocalizedCityName(config.home);
+  byId('settings-home-time').textContent = `${formatClock(now, tz)} · ${tz}`;
+  byId('settings-home-sky').replaceWith(Object.assign(createSkyDot(tz, now, 'sky-dot large'), { id: 'settings-home-sky' }));
+  byId('theme-swatch-clock').style.background = createDayGradient(hour => getGradientColors(Math.floor(hour) % 24, (hour % 1) * 60));
+  // Today's solar day in the home city: local midnight, then every half hour.
+  const midnight = now.getTime() - (getLocalMinuteOfDay(tz, now) * 60 + now.getSeconds()) * 1000;
+  byId('theme-swatch-solar').style.background = createDayGradient(hour => {
+    const paletteHour = getSolarPaletteHour(tz, coordinates[tz], new Date(midnight + hour * 3600000));
+    const minutes = Math.round(paletteHour * 60) % 1440;
+    return getGradientColors(Math.floor(minutes / 60), minutes % 60);
+  });
 }
 
 // Edge fades and arrow buttons appear only in a direction with more clocks.
@@ -1217,7 +1825,11 @@ byId('search-close').addEventListener('click', closeSearch);
 byId('search-done').addEventListener('click', closeSearch);
 byId('now-btn').addEventListener('click', () => returnToNow());
 $searchOverlay.addEventListener('click', event => { if (event.target === $searchOverlay && searchMode !== 'onboarding') closeSearch(); });
-document.addEventListener('click', event => { if (!$settingsPanel.contains(event.target) && event.target !== $settingsBtn) closeSettings(); });
+document.addEventListener('click', event => {
+  if (!$settingsPanel.contains(event.target) && event.target !== $settingsBtn) closeSettings();
+  if (openMenuState && !openMenuState.menu.contains(event.target) && !openMenuState.anchor.contains(event.target)) closeMenu({ restoreFocus: false });
+  if (hoursState && !$hoursPopover.contains(event.target) && !hoursState.chip.contains(event.target)) closeHoursPopover({ restoreFocus: false });
+});
 
 $timeSlider.addEventListener('input', () => setViewedOffset(Number($timeSlider.value)));
 $timeSlider.addEventListener('keydown', event => {
@@ -1234,15 +1846,9 @@ $dashboard.addEventListener('scroll', () => {
 }, { passive: true });
 
 $searchInput.addEventListener('input', () => {
+  if (!$searchInput.value.trim()) { showSearchSuggestions(); return; }
   const results = searchCities($searchInput.value).filter(city => searchMode !== 'group' || city.tz === searchTargetTimeZone);
-  renderSearchResults(results, $searchResults, city => {
-  if (searchMode === 'home') { if (setHome(city.city, city.country, city.tz, true)) closeSearch(); return; }
-  const added = addZone(city.city, city.country, city.tz);
-  if (searchMode === 'onboarding') {
-    if (added) showToast(t('timezoneAdded', getLocalizedCityName(city)));
-    $searchInput.value = ''; clearSearchResults($searchResults); updateMultiAddStatus(); $searchInput.focus();
-  } else closeSearch();
-  });
+  renderSearchResults(results, $searchResults, selectSearchResult);
 });
 
 function searchKeydown(event, list, close) {
@@ -1254,7 +1860,10 @@ function searchKeydown(event, list, close) {
 }
 $searchInput.addEventListener('keydown', event => searchKeydown(event, $searchResults, searchMode === 'onboarding' ? null : closeSearch));
 $homeSearch.addEventListener('input', () => renderSearchResults(searchCities($homeSearch.value), $homeResults, city => { setHome(city.city, city.country, city.tz); showGoalStep(); }));
-$homeSearch.addEventListener('keydown', event => searchKeydown(event, $homeResults));
+$homeSearch.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !$homeSearch.value.trim() && byId('detected-home')) { event.preventDefault(); byId('detected-home').click(); return; }
+  searchKeydown(event, $homeResults);
+});
 byId('goal-people').addEventListener('click', () => finishOnboarding('people'));
 byId('goal-sample').addEventListener('click', () => finishOnboarding('sample'));
 byId('goal-home').addEventListener('click', () => finishOnboarding('home'));
@@ -1264,13 +1873,19 @@ for (const [control, key, transform = value => value] of [
 ]) {
   control.addEventListener('change', () => { config[key] = transform(control.checked); saveConfig(); lastCanvasKey = ''; updateDisplay(); startTimer(); });
 }
-$densitySelect.addEventListener('change', () => { config.infoDensity = $densitySelect.value; saveConfig(); updateDisplay(); });
-$themeSelect.addEventListener('change', () => { config.visualTheme = $themeSelect.value; saveConfig(); lastCanvasKey = ''; updateDisplay(); });
+for (const input of $densityInputs) input.addEventListener('change', () => { config.infoDensity = input.value; saveConfig(); updateDisplay(); });
+for (const input of $themeInputs) {
+  input.addEventListener('change', () => {
+    const snapshot = captureLayout();
+    config.visualTheme = input.value; saveConfig(); lastCanvasKey = ''; updateDisplay(); playLayout(snapshot);
+  });
+}
 $storageSelect.addEventListener('change', () => changeStorageMode($storageSelect.value));
 $presetSelect.addEventListener('change', () => activatePreset($presetSelect.value));
 byId('save-preset-btn').addEventListener('click', savePreset);
 byId('delete-preset-btn').addEventListener('click', deletePreset);
 byId('change-home-btn').addEventListener('click', () => { closeSettings(); openSearch('home', $settingsBtn); });
+$presetSwitcherBtn.addEventListener('click', event => { event.stopPropagation(); openPresetMenu(); });
 byId('export-btn').addEventListener('click', exportBackup);
 byId('import-btn').addEventListener('click', () => byId('import-file').click());
 byId('import-file').addEventListener('change', event => { if (event.target.files[0]) importBackup(event.target.files[0]); event.target.value = ''; });
@@ -1287,6 +1902,7 @@ function isTextEntry(element) {
 document.addEventListener('keydown', event => {
   if (event.defaultPrevented) return;
   if (event.key === 'Escape') {
+    if (closeMenu() || closeHoursPopover()) return;
     if (!$searchOverlay.classList.contains('hidden')) { if (searchMode !== 'onboarding') closeSearch(); return; }
     if (!$firstRunModal.classList.contains('hidden')) return;
     if (!$settingsPanel.classList.contains('hidden')) { closeSettings({ restoreFocus: true }); return; }
@@ -1304,7 +1920,48 @@ document.addEventListener('keydown', event => {
   else if (event.key.toLowerCase() === 't') { event.preventDefault(); togglePlanner(); }
   else if (event.key.toLowerCase() === 'e') { event.preventDefault(); toggleEdit(); }
   else if (event.key === ',') { event.preventDefault(); $settingsPanel.classList.contains('hidden') ? openSettings() : closeSettings(); }
+  else if (/^[1-9]$/.test(event.key) && config.presets[Number(event.key) - 1]) {
+    event.preventDefault();
+    const preset = config.presets[Number(event.key) - 1];
+    if (preset.id !== config.activePresetId) activatePreset(preset.id);
+  } else if (event.key === '*') launchShootingStar();
 });
+
+// While planning, scrolling moves through time: vertical scroll anywhere, or
+// horizontal scroll over the planner. Every 40px is one 15-minute step.
+let wheelRemainder = 0;
+addEventListener('wheel', event => {
+  if (!planningOpen || isModalOpen() || event.ctrlKey || $settingsPanel.contains(event.target)) return;
+  const vertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+  const delta = vertical ? event.deltaY : $planner.contains(event.target) ? event.deltaX : 0;
+  if (!delta) return;
+  event.preventDefault();
+  wheelRemainder += event.deltaMode === 1 ? delta * 40 : delta;
+  const steps = Math.trunc(wheelRemainder / 40);
+  if (!steps) return;
+  wheelRemainder -= steps * 40;
+  setViewedOffset(viewedOffsetMinutes + steps * 15);
+}, { passive: false });
+
+// Now and then a shooting star crosses a night sky.
+let shootingStarTimer = null;
+function scheduleShootingStar() {
+  clearTimeout(shootingStarTimer);
+  shootingStarTimer = setTimeout(() => { launchShootingStar(); scheduleShootingStar(); }, 45000 + Math.random() * 135000);
+}
+
+function launchShootingStar() {
+  if (document.hidden || !decorativeMotion() || isModalOpen()) return;
+  const nightColumns = [...$columns.querySelectorAll('.tz-column')].filter(column => Number(column.dataset.night) > 0.8);
+  if (!nightColumns.length) return;
+  const column = nightColumns[Math.floor(Math.random() * nightColumns.length)];
+  const star = document.createElement('span');
+  star.className = 'shooting-star';
+  star.style.left = `${column.offsetLeft + column.offsetWidth * (0.35 + Math.random() * 0.55)}px`;
+  star.style.top = `${innerHeight * (0.05 + Math.random() * 0.2)}px`;
+  star.addEventListener('animationend', () => star.remove());
+  $skyEvents.append(star);
+}
 
 // Lifecycle
 function startTimer() {
@@ -1314,7 +1971,15 @@ function startTimer() {
 }
 
 let resizeFrame = null;
-addEventListener('resize', () => { if (resizeFrame) cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { resizeFrame = null; lastCanvasKey = ''; updateDisplay(); }); });
+addEventListener('resize', () => {
+  if (resizeFrame) cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = null; lastCanvasKey = '';
+    if ($columns.children.length) updateDisplay(); else if (!$firstRunModal.classList.contains('hidden')) paintOnboardingSky();
+    if (hoursState) positionFloating($hoursPopover, hoursState.chip, 'above');
+    closeMenu({ restoreFocus: false });
+  });
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (updateTimer) clearTimeout(updateTimer); updateTimer = null; store.flush(); }
   else if (config.home) { updateDisplay(); startTimer(); }
@@ -1329,6 +1994,7 @@ async function init() {
   syncSettingsControls();
   if (!config.home || !config.onboardingComplete) showFirstRun();
   else { renderColumns(); startTimer(); if (adopted) showToast(t('syncAdopted')); }
+  scheduleShootingStar();
 }
 
 init();

@@ -25,6 +25,19 @@
     </button>
   </div>
 
+  <div id="preset-switcher" class="hidden">
+    <button type="button" id="preset-switcher-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="preset-menu" title="Switch preset (1–9)" data-i18n-title="switchPresetShortcut">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14M5 12h14M5 17h9"></path></svg>
+      <span id="preset-switcher-name"></span>
+      <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 10 4 4 4-4"></path></svg>
+    </button>
+    <div id="preset-menu" class="menu hidden" role="menu" aria-label="Presets" data-i18n-aria-label="presets"></div>
+  </div>
+
+  <div id="travel-chip" class="hidden" aria-hidden="true">
+    <span class="travel-dot"></span><span id="travel-chip-text"></span><kbd>Esc</kbd>
+  </div>
+
   <div id="search-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="search-title">
     <div id="search-container">
       <div class="overlay-heading">
@@ -47,22 +60,38 @@
       <button type="button" id="settings-close" aria-label="Close" data-i18n-aria-label="close">×</button>
     </div>
 
+    <section class="home-card">
+      <span id="settings-home-sky" class="sky-dot large" aria-hidden="true"></span>
+      <span class="home-card-text">
+        <span class="eyebrow" data-i18n="home">Home</span>
+        <strong id="settings-home-name"></strong>
+        <span id="settings-home-time"></span>
+      </span>
+      <button type="button" id="change-home-btn" aria-label="Change home timezone" data-i18n-aria-label="changeHomeTimezone"><span data-i18n="change">Change</span></button>
+    </section>
+
     <section>
       <h3 data-i18n="display">Display</h3>
-      <label class="check-row"><input type="checkbox" id="toggle-24h"> <span data-i18n="format24h">24-hour format</span></label>
-      <label class="check-row"><input type="checkbox" id="toggle-seconds"> <span data-i18n="showSeconds">Show seconds</span></label>
-      <label class="field-row"><span data-i18n="informationDensity">Information density</span>
-        <select id="density-select"><option value="standard" data-i18n="standard">Standard</option><option value="compact" data-i18n="compact">Compact</option></select>
-      </label>
-      <label class="field-row"><span data-i18n="gradientTheme">Gradient theme</span>
-        <select id="theme-select"><option value="clock" data-i18n="predictableClock">Predictable clock</option><option value="solar" data-i18n="solarAware">Solar-aware</option></select>
-      </label>
-      <label class="check-row"><input type="checkbox" id="toggle-motion"> <span data-i18n="atmosphericMotion">Smooth gradient transitions</span></label>
+      <label class="switch-row"><span data-i18n="format24h">24-hour format</span><input type="checkbox" role="switch" id="toggle-24h"></label>
+      <label class="switch-row"><span data-i18n="showSeconds">Show seconds</span><input type="checkbox" role="switch" id="toggle-seconds"></label>
+      <fieldset class="segmented-row">
+        <legend data-i18n="informationDensity">Information density</legend>
+        <span class="segmented">
+          <label><input type="radio" name="density" value="standard"><span data-i18n="standard">Standard</span></label>
+          <label><input type="radio" name="density" value="compact"><span data-i18n="compact">Compact</span></label>
+        </span>
+      </fieldset>
+      <fieldset class="theme-options">
+        <legend data-i18n="gradientTheme">Gradient theme</legend>
+        <label class="theme-card"><input type="radio" name="theme" value="clock"><span class="theme-swatch" id="theme-swatch-clock" aria-hidden="true"></span><strong data-i18n="predictableClock">Predictable clock</strong><small data-i18n="predictableClockHint">Same colors every day</small></label>
+        <label class="theme-card"><input type="radio" name="theme" value="solar"><span class="theme-swatch" id="theme-swatch-solar" aria-hidden="true"></span><strong data-i18n="solarAware">Solar-aware</strong><small data-i18n="solarAwareHint">Follows local sunrise and sunset</small></label>
+      </fieldset>
+      <label class="switch-row"><span data-i18n="atmosphericMotion">Smooth gradient transitions</span><input type="checkbox" role="switch" id="toggle-motion"></label>
     </section>
 
     <section>
       <h3 data-i18n="availability">Availability</h3>
-      <label class="check-row"><input type="checkbox" id="settings-availability"> <span data-i18n="sharedAvailability">Shared availability</span></label>
+      <label class="switch-row"><span data-i18n="sharedAvailability">Shared availability</span><input type="checkbox" role="switch" id="settings-availability"></label>
       <p class="privacy-note" data-i18n="availabilityHint">Highlights clocks inside their working hours and days. Set them for each clock in edit mode (E).</p>
     </section>
 
@@ -92,15 +121,16 @@
     </section>
 
     <section>
-      <button type="button" id="change-home-btn" data-i18n="changeHomeTimezone">Change home timezone</button>
       <details id="shortcut-reference">
         <summary data-i18n="keyboardShortcuts">Keyboard shortcuts</summary>
         <dl>
           <div><dt><kbd>A</kbd> / <kbd>/</kbd></dt><dd data-i18n="shortcutAdd">Add timezone</dd></div>
           <div><dt><kbd>T</kbd></dt><dd data-i18n="shortcutTravel">Time travel</dd></div>
           <div><dt><kbd>E</kbd></dt><dd data-i18n="shortcutEdit">Edit clocks</dd></div>
+          <div><dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd data-i18n="shortcutPreset">Switch preset</dd></div>
           <div><dt><kbd>,</kbd></dt><dd data-i18n="shortcutSettings">Settings</dd></div>
           <div><dt><kbd>Esc</kbd></dt><dd data-i18n="shortcutEscape">Close or return to now</dd></div>
+          <div><dt data-i18n="scrollKey">Scroll</dt><dd data-i18n="shortcutScrub">Move through time while planning</dd></div>
         </dl>
       </details>
     </section>
@@ -135,29 +165,68 @@
     <div class="planner-copy">
       <span class="eyebrow" data-i18n="planningTime">Planning time</span>
       <span class="planner-when"><strong id="planner-time"></strong><span id="planner-offset"></span></span>
-      <label class="planner-availability-toggle"><input type="checkbox" id="availability-toggle"> <span data-i18n="sharedAvailability">Shared availability</span></label>
-      <span id="availability-summary" aria-live="polite"></span>
+      <label class="planner-availability-toggle"><input type="checkbox" role="switch" id="availability-toggle"> <span data-i18n="sharedAvailability">Shared availability</span></label>
     </div>
-    <label class="timeline-field">
-      <span class="visually-hidden" data-i18n="timeTravelSlider">Time travel, in 15-minute steps</span>
-      <input id="time-slider" type="range" min="0" max="2880" step="15" value="0">
+    <div class="timeline-field">
+      <div class="timeline-track" aria-hidden="true">
+        <span id="timeline-sky" class="timeline-sky"></span>
+        <span id="timeline-windows" class="timeline-windows"></span>
+        <span id="timeline-ticks" class="timeline-ticks"></span>
+      </div>
+      <label class="timeline-input">
+        <span class="visually-hidden" data-i18n="timeTravelSlider">Time travel, in 15-minute steps</span>
+        <input id="time-slider" type="range" min="0" max="2880" step="15" value="0">
+      </label>
       <span id="timeline-days" class="timeline-days" aria-hidden="true"></span>
-    </label>
+    </div>
     <button type="button" id="now-btn" class="primary" data-i18n="returnToNow">Now</button>
+    <span id="availability-summary" aria-live="polite"></span>
   </section>
 
   <template id="edit-icons">
     <svg data-icon="move-left" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5"></path><path d="m11 6-6 6 6 6"></path></svg>
     <svg data-icon="move-right" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
     <svg data-icon="home" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11 12 4.5l8 6.5"></path><path d="M6.5 9.5V19h11V9.5"></path><path d="M10 19v-5h4v5"></path></svg>
+    <svg data-icon="grip" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="6.5" r="1.2"></circle><circle cx="15" cy="6.5" r="1.2"></circle><circle cx="9" cy="12" r="1.2"></circle><circle cx="15" cy="12" r="1.2"></circle><circle cx="9" cy="17.5" r="1.2"></circle><circle cx="15" cy="17.5" r="1.2"></circle></svg>
+    <svg data-icon="more" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="6" cy="12" r="1.3"></circle><circle cx="12" cy="12" r="1.3"></circle><circle cx="18" cy="12" r="1.3"></circle></svg>
+    <svg data-icon="hours" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7.5"></circle><path d="M12 7.5v4.8h4"></path></svg>
+    <svg data-icon="group" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 6v12M6 12h12"></path></svg>
+    <svg data-icon="check" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 12.5 4 4 8-9"></path></svg>
+    <svg data-icon="pin" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20s6-5.6 6-10.5a6 6 0 0 0-12 0C6 14.4 12 20 12 20Z"></path><circle cx="12" cy="9.5" r="2.2"></circle></svg>
     <svg data-icon="remove" class="edit-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14"></path><path d="M10 4h4"></path><path d="m7 7 1 12h8l1-12"></path><path d="M10.5 11v5"></path><path d="M13.5 11v5"></path></svg>
   </template>
+
+  <div id="column-menu" class="menu hidden" role="menu"></div>
+
+  <div id="hours-popover" class="hidden" role="dialog" aria-labelledby="hours-title">
+    <div class="panel-heading">
+      <h2 id="hours-title"></h2>
+      <button type="button" id="hours-close" aria-label="Close" data-i18n-aria-label="close">×</button>
+    </div>
+    <label class="switch-row"><span data-i18n="includeWorkingHours">Include this timezone in shared availability</span><input type="checkbox" role="switch" id="hours-enabled"></label>
+    <div class="hours-schedule">
+      <div class="hours-bar">
+        <span class="hours-bar-sky" id="hours-bar-sky"></span>
+        <span class="hours-bar-range" id="hours-bar-range"></span>
+        <span class="hours-bar-range wrap" id="hours-bar-wrap"></span>
+        <span class="hours-handle" id="hours-start-handle" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="1425" data-i18n-aria-label="workingDayStarts" aria-label="Working day starts"></span>
+        <span class="hours-handle" id="hours-end-handle" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="1425" data-i18n-aria-label="workingDayEnds" aria-label="Working day ends"></span>
+      </div>
+      <div class="hours-scale" aria-hidden="true"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+      <div class="hours-inputs">
+        <label><span data-i18n="workingDayStarts">Working day starts</span><input type="time" id="hours-start" step="900"></label>
+        <label><span data-i18n="workingDayEnds">Working day ends</span><input type="time" id="hours-end" step="900"></label>
+      </div>
+      <div class="day-picker" id="hours-days" role="group" aria-label="Working days" data-i18n-aria-label="workingDays"></div>
+    </div>
+  </div>
 
   <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"><span id="toast-message"></span><button type="button" id="toast-action" class="hidden"></button></div>
 
   <main id="dashboard" aria-label="World clocks" data-i18n-aria-label="worldClocks">
     <canvas id="gradient-canvas" aria-hidden="true"></canvas>
     <div id="columns"></div>
+    <div id="sky-events" aria-hidden="true"></div>
   </main>
 
   <div class="scroll-fade left" aria-hidden="true"></div>

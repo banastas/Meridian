@@ -1,54 +1,71 @@
 {
   "extensionName": {
-    "message": "Meridian"
+    "message": "Meridian",
+    "description": "Meridian product interface text."
   },
   "extensionDescription": {
-    "message": "Une élégante horloge mondiale en nouvel onglet pour voir, planifier et rester connecté entre les fuseaux horaires."
+    "message": "Une élégante horloge mondiale en nouvel onglet pour voir, planifier et rester connecté entre les fuseaux horaires.",
+    "description": "Meridian product interface text."
   },
   "addTimezone": {
-    "message": "Ajouter un fuseau horaire"
+    "message": "Ajouter un fuseau horaire",
+    "description": "Meridian product interface text."
   },
   "settings": {
-    "message": "Paramètres"
+    "message": "Paramètres",
+    "description": "Meridian product interface text."
   },
   "dashboardControls": {
-    "message": "Commandes du tableau de bord"
+    "message": "Commandes du tableau de bord",
+    "description": "Meridian product interface text."
   },
   "worldClocks": {
-    "message": "Horloges mondiales"
+    "message": "Horloges mondiales",
+    "description": "Meridian product interface text."
   },
   "searchResults": {
-    "message": "Résultats des villes et fuseaux horaires"
+    "message": "Résultats des villes et fuseaux horaires",
+    "description": "Meridian product interface text."
   },
   "homeSearchResults": {
-    "message": "Résultats des villes locales"
+    "message": "Résultats des villes locales",
+    "description": "Meridian product interface text."
   },
   "searchCityOrTimezone": {
-    "message": "Rechercher une ville ou un fuseau horaire..."
+    "message": "Rechercher une ville ou un fuseau horaire...",
+    "description": "Meridian product interface text."
   },
   "searchYourCity": {
-    "message": "Rechercher votre ville..."
+    "message": "Rechercher votre ville...",
+    "description": "Meridian product interface text."
   },
   "format24h": {
-    "message": "Format 24 heures"
+    "message": "Format 24 heures",
+    "description": "Meridian product interface text."
   },
   "showSeconds": {
-    "message": "Afficher les secondes"
+    "message": "Afficher les secondes",
+    "description": "Meridian product interface text."
   },
   "changeHomeTimezone": {
-    "message": "Changer de fuseau horaire local"
+    "message": "Changer de fuseau horaire local",
+    "description": "Meridian product interface text."
   },
   "welcomeTitle": {
-    "message": "Bienvenue dans Meridian"
+    "message": "Bienvenue dans Meridian",
+    "description": "Meridian product interface text."
   },
   "welcomeBody": {
-    "message": "Sélectionnez votre fuseau horaire local pour commencer."
+    "message": "Sélectionnez votre fuseau horaire local pour commencer.",
+    "description": "Meridian product interface text."
   },
   "removeTimezone": {
-    "message": "Supprimer le fuseau horaire"
+    "message": "Supprimer le fuseau horaire",
+    "description": "Meridian product interface text."
   },
   "removeNamedTimezone": {
     "message": "Supprimer le fuseau horaire de $CITY$",
+    "description": "Meridian product interface text.",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -56,10 +73,12 @@
     }
   },
   "homeTimezone": {
-    "message": "Fuseau horaire local"
+    "message": "Fuseau horaire local",
+    "description": "Meridian product interface text."
   },
   "alreadyOnTimezone": {
     "message": "$CITY$ est déjà dans ce fuseau horaire",
+    "description": "Meridian product interface text.",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -67,13 +86,16 @@
     }
   },
   "maxCitiesPerTimezone": {
-    "message": "Jusqu'à 3 villes par fuseau horaire"
+    "message": "Jusqu'à 3 villes par fuseau horaire",
+    "description": "Meridian product interface text."
   },
   "maxTimezones": {
-    "message": "Jusqu'à 10 fuseaux horaires ; supprimez-en un pour en ajouter un autre"
+    "message": "Jusqu'à 10 fuseaux horaires ; supprimez-en un pour en ajouter un autre",
+    "description": "Meridian product interface text."
   },
   "useDetectedLocation": {
     "message": "Utiliser le fuseau horaire détecté : $CITY$, $COUNTRY$ ($TIMEZONE$)",
+    "description": "Meridian product interface text.",
     "placeholders": {
       "city": {
         "content": "$1"
@@ -88,6 +110,7 @@
   },
   "detectedSearchPrompt": {
     "message": "Détecté : $TIMEZONE$ ; recherchez votre ville pour la sélectionner",
+    "description": "Meridian product interface text.",
     "placeholders": {
       "timezone": {
         "content": "$1"
@@ -95,7 +118,8 @@
     }
   },
   "dstBadge": {
-    "message": "HE"
+    "message": "HE",
+    "description": "Meridian product interface text."
   },
   "timeTravel": {
     "message": "Voyage dans le temps (T)",
@@ -545,5 +569,87 @@
   "availabilityHint": {
     "message": "Met en évidence les horloges pendant leurs heures et jours de travail. Réglez-les pour chaque horloge en mode édition (E).",
     "description": "Settings note explaining shared availability."
+  },
+  "home": {
+    "message": "Domicile",
+    "description": "Meridian product interface text."
+  },
+  "change": {
+    "message": "Changer",
+    "description": "Meridian product interface text."
+  },
+  "predictableClockHint": {
+    "message": "Les mêmes couleurs chaque jour",
+    "description": "Meridian product interface text."
+  },
+  "solarAwareHint": {
+    "message": "Suit le lever et le coucher du soleil locaux",
+    "description": "Meridian product interface text."
+  },
+  "shortcutPreset": {
+    "message": "Changer de profil",
+    "description": "Meridian product interface text."
+  },
+  "switchPresetShortcut": {
+    "message": "Changer de profil (1–9)",
+    "description": "Meridian product interface text."
+  },
+  "scrollKey": {
+    "message": "Défiler",
+    "description": "Meridian product interface text."
+  },
+  "shortcutScrub": {
+    "message": "Parcourir le temps en planifiant",
+    "description": "Meridian product interface text."
+  },
+  "plannedTime": {
+    "message": "Heure planifiée",
+    "description": "Meridian product interface text."
+  },
+  "dragToReorder": {
+    "message": "Faites glisser pour réorganiser",
+    "description": "Meridian product interface text."
+  },
+  "notInAvailability": {
+    "message": "Hors disponibilité",
+    "description": "Meridian product interface text."
+  },
+  "everyDay": {
+    "message": "Tous les jours",
+    "description": "Meridian product interface text."
+  },
+  "suggestions": {
+    "message": "Suggestions",
+    "description": "Meridian product interface text."
+  },
+  "recentlyRemoved": {
+    "message": "Supprimés récemment",
+    "description": "Meridian product interface text."
+  },
+  "detectedHomeHint": {
+    "message": "Détecté sur cet appareil",
+    "description": "Meridian product interface text."
+  },
+  "managePresets": {
+    "message": "Gérer les profils…",
+    "description": "Meridian product interface text."
+  },
+  "workingHoursFor": {
+    "message": "Heures de travail : $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "moreActions": {
+    "message": "Plus d’actions pour $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
   }
 }
