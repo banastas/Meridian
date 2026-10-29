@@ -70,8 +70,11 @@ for (const relativePath of packageFiles) {
 }
 
 await rm(zipPath, { force: true });
+// ZIP entries store local wall-clock times, so zip runs in UTC to give the
+// same bytes on every machine and in CI.
 execFileSync('zip', ['-X', '-q', zipPath, ...packageFiles], {
   cwd: packageRoot,
+  env: { ...process.env, TZ: 'UTC' },
   stdio: 'inherit',
 });
 
