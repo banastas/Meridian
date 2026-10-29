@@ -569,5 +569,87 @@
   "availabilityHint": {
     "message": "Highlights clocks inside their working hours and days. Set them for each clock in edit mode (E).",
     "description": "Settings note explaining shared availability."
+  },
+  "home": {
+    "message": "Home",
+    "description": "Meridian product interface text."
+  },
+  "change": {
+    "message": "Change",
+    "description": "Meridian product interface text."
+  },
+  "predictableClockHint": {
+    "message": "Same colors every day",
+    "description": "Meridian product interface text."
+  },
+  "solarAwareHint": {
+    "message": "Follows local sunrise and sunset",
+    "description": "Meridian product interface text."
+  },
+  "shortcutPreset": {
+    "message": "Switch preset",
+    "description": "Meridian product interface text."
+  },
+  "switchPresetShortcut": {
+    "message": "Switch preset (1–9)",
+    "description": "Meridian product interface text."
+  },
+  "scrollKey": {
+    "message": "Scroll",
+    "description": "Meridian product interface text."
+  },
+  "shortcutScrub": {
+    "message": "Move through time while planning",
+    "description": "Meridian product interface text."
+  },
+  "plannedTime": {
+    "message": "Planned time",
+    "description": "Meridian product interface text."
+  },
+  "dragToReorder": {
+    "message": "Drag to reorder",
+    "description": "Meridian product interface text."
+  },
+  "notInAvailability": {
+    "message": "Not in availability",
+    "description": "Meridian product interface text."
+  },
+  "everyDay": {
+    "message": "Every day",
+    "description": "Meridian product interface text."
+  },
+  "suggestions": {
+    "message": "Suggestions",
+    "description": "Meridian product interface text."
+  },
+  "recentlyRemoved": {
+    "message": "Recently removed",
+    "description": "Meridian product interface text."
+  },
+  "detectedHomeHint": {
+    "message": "Detected from this device",
+    "description": "Meridian product interface text."
+  },
+  "managePresets": {
+    "message": "Manage presets…",
+    "description": "Meridian product interface text."
+  },
+  "workingHoursFor": {
+    "message": "Working hours — $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
+  },
+  "moreActions": {
+    "message": "More actions for $CITY$",
+    "description": "Meridian product interface text.",
+    "placeholders": {
+      "city": {
+        "content": "$1"
+      }
+    }
   }
 }

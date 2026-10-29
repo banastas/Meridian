@@ -24,6 +24,10 @@ import {
   getSolarGradientColors,
   getSolarTimes,
   getSmoothGradientStops,
+  getSkyLight,
+  mixColor,
+  oklabToRgb,
+  rgbToOklab,
   getTextColor,
   getTimeInZone,
   getZonedDateParts,
@@ -160,12 +164,35 @@ test('smooth horizontal gradient stops preserve edges and interpolate without se
   assert.deepEqual(stops[0], { offset: 0, color: [0, 0, 0] });
   assert.deepEqual(stops.at(-1), { offset: 1, color: [255, 128, 64] });
   assert.ok(stops.every((stop, index) => index === 0 || stop.offset >= stops[index - 1].offset));
+  // Blends are perceptual: the midpoint sits halfway in OKLab lightness.
   const midpoint = stops.find(stop => stop.offset === 0.5);
-  assert.deepEqual(midpoint.color, [127.5, 64, 32]);
+  const [startL, endL, middleL] = [[0, 0, 0], [255, 128, 64], midpoint.color].map(color => rgbToOklab(color)[0]);
+  assert.ok(Math.abs(middleL - (startL + endL) / 2) < 1e-4, `midpoint lightness ${middleL}`);
+  assert.deepEqual(midpoint.color, mixColor([0, 0, 0], [255, 128, 64], 0.5));
   assert.deepEqual(getSmoothGradientStops([[12, 34, 56]]), [
     { offset: 0, color: [12, 34, 56] },
     { offset: 1, color: [12, 34, 56] },
   ]);
+});
+
+test('OKLab conversion round-trips sRGB colors', () => {
+  for (const color of [[0, 0, 0], [255, 255, 255], [250, 240, 200], [15, 15, 40], [180, 100, 90]]) {
+    oklabToRgb(rgbToOklab(color)).forEach((channel, index) => assert.ok(Math.abs(channel - color[index]) < 1e-3));
+  }
+});
+
+test('sky light peaks at twilight and fills the night', () => {
+  assert.ok(getSkyLight(5.75).twilight > 0.99 && getSkyLight(18.75).twilight > 0.99);
+  assert.ok(getSkyLight(12).twilight < 0.01 && getSkyLight(0).twilight < 0.01);
+  assert.equal(getSkyLight(1).night, 1);
+  assert.equal(getSkyLight(23).night, 1);
+  assert.equal(getSkyLight(12).night, 0);
+  assert.ok(getSkyLight(12).horizonAlpha < 0.01, 'no horizon glow at midday');
+  // Continuous across midnight and through dawn.
+  for (let minute = 0; minute < 1440; minute++) {
+    const [a, b] = [getSkyLight(minute / 60), getSkyLight((minute + 1) / 60)];
+    assert.ok(Math.abs(a.night - b.night) < 0.05 && Math.abs(a.twilight - b.twilight) < 0.05, `jump at ${minute}`);
+  }
 });
 
 test('stored configurations repair a missing home column and malformed values', () => {

@@ -74,7 +74,54 @@ export function lerpColorRound(a, b, amount) {
   return lerpColor(a, b, amount).map(Math.round);
 }
 
-export function getSmoothGradientStops(colors, subdivisions = 16) {
+/* OKLab mixing keeps lightness even across a blend, so warm daylight and
+   violet dusk meet without the grey-brown midpoint a straight sRGB mix gives. */
+function toLinear(channel) {
+  const value = channel / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+function fromLinear(value) {
+  const linear = Math.max(0, value);
+  const encoded = linear <= 0.0031308 ? 12.92 * linear : 1.055 * linear ** (1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, encoded * 255));
+}
+
+export function rgbToOklab(color) {
+  const [r, g, b] = color.map(toLinear);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  ];
+}
+
+export function oklabToRgb([lightness, a, b]) {
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [
+    fromLinear(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    fromLinear(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    fromLinear(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s),
+  ];
+}
+
+export function mixColor(a, b, amount) {
+  if (amount <= 0) return [...a.slice(0, 3)];
+  if (amount >= 1) return [...b.slice(0, 3)];
+  return oklabToRgb(lerpColor(rgbToOklab(a), rgbToOklab(b), amount));
+}
+
+// Mixes [r, g, b, alpha] colors: OKLab for the color, linear for alpha.
+export function mixColorAlpha(a, b, amount) {
+  return [...mixColor(a, b, amount), a[3] + (b[3] - a[3]) * amount];
+}
+
+export function getSmoothGradientStops(colors, subdivisions = 16, mix = mixColor) {
   if (!Array.isArray(colors) || colors.length === 0) return [];
   if (colors.length === 1) {
     return [{ offset: 0, color: [...colors[0]] }, { offset: 1, color: [...colors[0]] }];
@@ -88,7 +135,7 @@ export function getSmoothGradientStops(colors, subdivisions = 16) {
       const smooth = raw * raw * (3 - 2 * raw);
       stops.push({
         offset: (index + 0.5 + raw) / colors.length,
-        color: lerpColor(colors[index], colors[index + 1], smooth),
+        color: mix(colors[index], colors[index + 1], smooth),
       });
     }
   }
@@ -105,8 +152,41 @@ export function getGradientColors(hour, minute) {
   const nextBand = COLOR_BANDS[nextBandIndex];
 
   return {
-    top: lerpColor(currentBand.top, nextBand.top, amount),
-    bottom: lerpColor(currentBand.bottom, nextBand.bottom, amount),
+    top: mixColor(currentBand.top, nextBand.top, amount),
+    bottom: mixColor(currentBand.bottom, nextBand.bottom, amount),
+  };
+}
+
+/* Sky light
+   Palette hours run 0–24 on the clock palette (solar mode maps real sunrise
+   to 5 and sunset to 19). Twilight peaks just after sunrise and around sunset
+   and drives the horizon glow; night drives the stars. */
+
+const DAWN_GLOW = [255, 176, 128];
+const DUSK_GLOW = [255, 128, 84];
+const NIGHT_AIRGLOW = [72, 62, 128];
+
+function circularHourDistance(a, b) {
+  return Math.abs((((a - b) % 24) + 36) % 24 - 12);
+}
+
+function smoothstep(edge0, edge1, value) {
+  const amount = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return amount * amount * (3 - 2 * amount);
+}
+
+export function getSkyLight(paletteHour) {
+  const hour = normalizeHours(paletteHour);
+  const dawn = Math.exp(-0.5 * (circularHourDistance(hour, 5.75) / 0.85) ** 2);
+  const dusk = Math.exp(-0.5 * (circularHourDistance(hour, 18.75) / 0.95) ** 2);
+  const twilight = Math.max(dawn, dusk);
+  const night = hour >= 12 ? smoothstep(20, 21.5, hour) : 1 - smoothstep(3.5, 5, hour);
+  const airglowShare = night * 0.35 / (twilight + night * 0.35 || 1);
+  return {
+    twilight,
+    night,
+    horizon: mixColor(dawn >= dusk ? DAWN_GLOW : DUSK_GLOW, NIGHT_AIRGLOW, airglowShare),
+    horizonAlpha: Math.min(0.6, twilight * 0.55 + night * 0.22),
   };
 }
 
@@ -482,11 +562,14 @@ export function getSolarAdjustedHour(localHour, solarTimes) {
   return normalizeHours(19 + 10 * nightProgress);
 }
 
-export function getSolarGradientColors(timeZone, coordinates, date = new Date()) {
+export function getSolarPaletteHour(timeZone, coordinates, date = new Date()) {
   const parts = getZonedDateParts(timeZone, date);
   const localHour = parts.hour + parts.minute / 60;
-  const adjusted = getSolarAdjustedHour(localHour, getSolarTimes(timeZone, coordinates, date));
-  const normalizedMinutes = Math.round(normalizeHours(adjusted) * 60) % 1440;
+  return normalizeHours(getSolarAdjustedHour(localHour, getSolarTimes(timeZone, coordinates, date)));
+}
+
+export function getSolarGradientColors(timeZone, coordinates, date = new Date()) {
+  const normalizedMinutes = Math.round(getSolarPaletteHour(timeZone, coordinates, date) * 60) % 1440;
   return getGradientColors(Math.floor(normalizedMinutes / 60), normalizedMinutes % 60);
 }
 
