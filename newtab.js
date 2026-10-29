@@ -41,7 +41,7 @@ import {
   resolveLocale,
   searchEntries,
   sortZonesByUtcOffset,
-} from './core.js?v=1.2.3';
+} from './core.js?v=1.3.0';
 
 // Localization
 let browserLocale = 'en';
@@ -53,7 +53,7 @@ let cityLocalization = {};
 let countryDisplayNames = null;
 const timezoneSearchCache = new Map();
 const timezoneNameFormatterCache = new Map();
-const ASSET_VERSION = '1.2.3';
+const ASSET_VERSION = '1.3.0';
 
 function hasChromeI18n() {
   return location.protocol === 'chrome-extension:' && typeof chrome !== 'undefined' && chrome.i18n?.getMessage;
