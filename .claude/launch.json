@@ -4,8 +4,8 @@
     {
       "name": "meridian-static",
       "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": ["-c", "cd /private/tmp/claude-501/-Volumes-Photography--GitHub-Meridian/e9e7c17b-26e5-45ce-a291-a0165e290726/scratchpad && exec python3 serve.py"],
-      "port": 8766
+      "runtimeArgs": ["-c", "cd /private/tmp/claude-501/-Volumes-Photography--GitHub-Meridian/154e1127-1bf4-4da8-a5d9-529a3e11b752/scratchpad && exec python3 serve.py"],
+      "port": 8768
     }
   ]
 }
